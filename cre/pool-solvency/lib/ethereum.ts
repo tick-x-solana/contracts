@@ -130,10 +130,10 @@ export const submitSolvencyReport = (
 // Read Pool Balance
 // ========================================
 
-export const readPoolBalance = async (
+export const readPoolBalance = (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig
-): Promise<bigint> => {
+): bigint => {
   runtime.log(`Reading pool balance from PoolReserve`);
   
   // In a real implementation, this would use EVM read capability
@@ -149,10 +149,10 @@ export const readPoolBalance = async (
 // Read Latest Solvency Epoch
 // ========================================
 
-export const readLatestSolvencyEpoch = async (
+export const readLatestSolvencyEpoch = (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig
-): Promise<number> => {
+): number => {
   runtime.log(`Reading latest solvency epoch from PoolReserve`);
   
   // In a real implementation, this would call:

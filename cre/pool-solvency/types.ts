@@ -12,6 +12,7 @@ export const evmConfigSchema = z.object({
   chainSelectorName: z.string(),
   chainId: z.number(),
   poolReserveAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  assetAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   gasLimit: z.string().optional(),
 });
 
@@ -25,6 +26,7 @@ export const configSchema = z.object({
   appApiBaseUrl: z.string().url(),
   evms: z.array(evmConfigSchema),
   minSolvencyRatio: z.string().optional(), // Defaults to 1.5e18
+  owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(), // EVM address for vault DON secrets ownership
 });
 
 export type Config = z.infer<typeof configSchema>;

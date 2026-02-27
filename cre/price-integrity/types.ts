@@ -22,6 +22,7 @@ export const evmConfigSchema = z.object({
 export const configSchema = z.object({
   appApiBaseUrl: z.string().url(),
   evms: z.array(evmConfigSchema).min(1),
+  owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/i).optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;

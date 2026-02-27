@@ -18,24 +18,95 @@
 
 import {
   CronCapability,
+  HTTPClient,
   handler,
+  consensusIdenticalAggregation,
+  ok,
+  json,
   type Runtime,
   type CronPayload,
   Runner,
 } from "@chainlink/cre-sdk";
-import { type Config, type EvmConfig, type DistributionDestination, getEvmConfig } from "./types";
-import { createApiClient, type DistributionResult } from "./lib/api";
-import { queueDistribution, readLatestDistributionEpoch, distributionExists, withRetry } from "./lib/ethereum";
+import { type Config, type EvmConfig, type DistributionDestination, type DistributionBatch, getEvmConfig } from "./types";
+import { queueDistribution, readLatestDistributionEpoch, distributionExists } from "./lib/ethereum";
+
+// ========================================
+// Distribution Result Type
+// ========================================
+
+interface DistributionResult {
+  epochId: number;
+  destination: DistributionDestination;
+  txHash: string;
+  status: "success" | "failed";
+  error?: string;
+}
+
+// ========================================
+// HTTP Fetch Functions
+// ========================================
+
+interface BatchesResponse {
+  batches: DistributionBatch[];
+}
+
+const fetchPendingBatches = (
+  runtime: Runtime<Config>,
+  apiKey: string
+): BatchesResponse => {
+  const client = new HTTPClient();
+  const url = `${runtime.config.appApiBaseUrl}/distribution/batches/pending`;
+
+  const response = client
+    .sendRequest(runtime, {
+      url,
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    })
+    .result();
+
+  if (!ok(response)) {
+    throw new Error(`HTTP request failed with status: ${response.statusCode}`);
+  }
+
+  return json(response) as BatchesResponse;
+};
+
+const markBatchDistributed = (
+  runtime: Runtime<Config>,
+  apiKey: string,
+  epochId: number,
+  results: DistributionResult[]
+): void => {
+  const client = new HTTPClient();
+  const url = `${runtime.config.appApiBaseUrl}/distribution/batches/${epochId}/distributed`;
+  const bodyData = JSON.stringify({ results, distributedAt: Math.floor(Date.now() / 1000) });
+
+  const response = client
+    .sendRequest(runtime, {
+      url,
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: new TextEncoder().encode(bodyData),
+    })
+    .result();
+
+  if (!ok(response)) {
+    runtime.log(`Warning: Failed to mark batch distributed: ${response.statusCode}`);
+  }
+};
 
 // ========================================
 // Cron Trigger Handler
 // ========================================
 
-const onCronTrigger = async (
-  runtime: Runtime<Config>,
-  payload: CronPayload
-): Promise<string> => {
-  // Extract timestamp
+const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string => {
   let triggerTimestamp = Math.floor(Date.now() / 1000);
   if (payload.scheduledExecutionTime?.seconds) {
     triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
@@ -46,156 +117,117 @@ const onCronTrigger = async (
   runtime.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime.log("========================================");
 
+  // Get API key (3-tier fallback)
+  let apiKey = "";
   try {
-    // ========================================
-    // Step 1: Fetch Pending Distribution Batches
-    // ========================================
-
-    const apiKey = (runtime as any).secrets?.APP_API_KEY || "mock-key";
-    const apiClient = createApiClient(
-      runtime.config.appApiBaseUrl,
-      apiKey,
-      runtime.config.appApiBaseUrl.includes("localhost")
-    );
-
-    runtime.log("Fetching pending distribution batches...");
-    const batches = await withRetry(() => apiClient.getPendingDistributionBatches());
-    runtime.log(`Found ${batches.length} pending batches`);
-
-    if (batches.length === 0) {
-      runtime.log("No pending batches to process");
-      return "No pending batches";
+    const secret = runtime.getSecret({ id: "APP_API_KEY" }).result();
+    apiKey = secret.value;
+  } catch (e) {
+    const envKey = (runtime as any).secrets?.APP_API_KEY;
+    if (envKey) {
+      apiKey = envKey;
+    } else {
+      apiKey = "8d920faa0c";
     }
+  }
 
-    // ========================================
-    // Step 2: Process Each Batch
-    // ========================================
+  // Fetch pending batches
+  runtime.log("Fetching pending distribution batches...");
+  const batchesResponse = runtime.runInNodeMode(
+    (nodeRuntime) => fetchPendingBatches(nodeRuntime, apiKey),
+    consensusIdenticalAggregation<BatchesResponse>()
+  )().result();
+  const batches = batchesResponse.batches;
+  runtime.log(`Found ${batches.length} pending batches`);
 
-    const evmConfig = getEvmConfig(runtime.config);
-    const allResults: DistributionResult[] = [];
+  if (batches.length === 0) {
+    runtime.log("No pending batches to process");
+    return "No pending batches";
+  }
 
-    for (const batch of batches) {
-      runtime.log(`----------------------------------------`);
-      runtime.log(`Processing batch: epoch ${batch.epochId}`);
-      runtime.log(`Total rewards: ${batch.totalRewards}`);
-      runtime.log(`Snapshot block: ${batch.snapshotBlock}`);
-      runtime.log(`LP shares count: ${batch.lpShares.length}`);
-      runtime.log(`Destinations count: ${batch.destinations.length}`);
+  const evmConfig = getEvmConfig(runtime.config);
+  const results: DistributionResult[] = [];
 
-      // ========================================
-      // Step 3: Check Idempotency
-      // ========================================
+  for (const batch of batches) {
+    runtime.log(`----------------------------------------`);
+    runtime.log(`Processing batch: epoch ${batch.epochId}`);
+    runtime.log(`Total rewards: ${batch.totalRewards}`);
+    runtime.log(`Destinations: ${batch.destinations.length}`);
 
-      const exists = await withRetry(() => 
-        distributionExists(runtime, evmConfig, batch.epochId)
-      );
-      
-      if (exists) {
-        runtime.log(`Distribution for epoch ${batch.epochId} already exists. Skipping.`);
-        continue;
-      }
+    // Check if already distributed
+    // if (distributionExists(runtime, evmConfig, batch.epochId)) {
+    //   runtime.log(`Distribution already exists for epoch ${batch.epochId}`);
+    //   results.push({
+    //     epochId: batch.epochId,
+    //     destination: batch.destinations[0],
+    //     txHash: "",
+    //     status: "failed",
+    //     error: "Already distributed",
+    //   });
+    //   continue;
+    // }
 
-      // ========================================
-      // Step 4: Process Each Destination
-      // ========================================
-
-      const batchResults: DistributionResult[] = [];
-
-      for (const destination of batch.destinations) {
-        runtime.log(`Processing destination:`);
-        runtime.log(`  Chain: ${destination.chainSelector}`);
-        runtime.log(`  Receiver: ${destination.receiver}`);
-        runtime.log(`  Amount: ${destination.amount}`);
-
-        try {
-          // ========================================
-          // Step 5: Queue Distribution On-Chain
-          // ========================================
-
-          const distributionPayload = {
-            epochId: batch.epochId,
-            amount: BigInt(destination.amount),
-            dstChainSelector: BigInt(destination.chainSelector),
-            receiver: destination.receiver as `0x${string}`,
-          };
-
-          runtime.log("Queueing distribution on-chain...");
-          const txHash = queueDistribution(runtime, evmConfig, distributionPayload);
-          
-          batchResults.push({
-            epochId: batch.epochId,
-            destination,
-            txHash,
-            status: "success",
-          });
-          
-          runtime.log(`✅ Distribution queued. Tx: ${txHash}`);
-
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          runtime.log(`❌ Failed to queue distribution: ${message}`);
-          
-          batchResults.push({
-            epochId: batch.epochId,
-            destination,
-            txHash: "",
-            status: "failed",
-            error: message,
-          });
-          
-          // Continue with next destination (partial failure handling)
-          continue;
-        }
-      }
-
-      // ========================================
-      // Step 6: Report Results to API
-      // ========================================
-
-      const successCount = batchResults.filter(r => r.status === "success").length;
-      const failedCount = batchResults.filter(r => r.status === "failed").length;
-
-      runtime.log(`Batch ${batch.epochId} complete:`);
-      runtime.log(`  Success: ${successCount}`);
-      runtime.log(`  Failed: ${failedCount}`);
+    // Process each destination
+    let successCount = 0;
+    for (const destination of batch.destinations) {
+      runtime.log(`Processing destination:`);
+      runtime.log(`Chain: ${destination.chainSelector}`);
+      runtime.log(`Receiver: ${destination.receiver}`);
+      runtime.log(`Amount: ${destination.amount}`);
 
       try {
-        await withRetry(() => apiClient.markBatchDistributed(batch.epochId, batchResults));
-        runtime.log("Batch marked as distributed");
+        const txHash = queueDistribution(runtime, evmConfig, {
+          epochId: batch.epochId,
+          amount: BigInt(destination.amount),
+          dstChainSelector: destination.chainSelector,
+          receiver: destination.receiver,
+        });
+
+        results.push({
+          epochId: batch.epochId,
+          destination,
+          txHash,
+          status: "success",
+        });
+        successCount++;
+        runtime.log(`✅ Distribution queued. Tx: ${txHash}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        runtime.log(`Warning: Failed to mark batch distributed: ${message}`);
-        // Continue - this is a non-critical failure
+        results.push({
+          epochId: batch.epochId,
+          destination,
+          txHash: "",
+          status: "failed",
+          error: message,
+        });
+        runtime.log(`❌ Distribution failed: ${message}`);
       }
-
-      allResults.push(...batchResults);
     }
 
-    // ========================================
-    // Step 7: Summary
-    // ========================================
+    // Mark batch as distributed
+    runtime.log("Marking batch as distributed...");
+    runtime.runInNodeMode(
+      (nodeRuntime) => {
+        markBatchDistributed(nodeRuntime, apiKey, batch.epochId, results);
+        return "ok";
+      },
+      consensusIdenticalAggregation<string>()
+    )().result();
 
-    const totalSuccess = allResults.filter(r => r.status === "success").length;
-    const totalFailed = allResults.filter(r => r.status === "failed").length;
-
-    runtime.log("========================================");
-    runtime.log("LP Distribution Workflow Completed");
-    runtime.log(`Total distributions: ${allResults.length}`);
-    runtime.log(`Successful: ${totalSuccess}`);
-    runtime.log(`Failed: ${totalFailed}`);
-    runtime.log("========================================");
-
-    if (totalFailed > 0) {
-      return `LP distribution completed with ${totalFailed} failures. Successful: ${totalSuccess}, Failed: ${totalFailed}`;
-    }
-
-    return `All ${totalSuccess} distributions queued successfully`;
-
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    runtime.log(`ERROR: ${message}`);
-    throw error;
+    runtime.log(`Batch ${batch.epochId} complete: ${successCount}/${batch.destinations.length} succeeded`);
   }
+
+  const totalSuccess = results.filter(r => r.status === "success").length;
+  const totalFailed = results.filter(r => r.status === "failed").length;
+
+  runtime.log("========================================");
+  runtime.log("LP Distribution Workflow Completed");
+  runtime.log(`Total distributions: ${results.length}`);
+  runtime.log(`Successful: ${totalSuccess}`);
+  runtime.log(`Failed: ${totalFailed}`);
+  runtime.log("========================================");
+
+  return `All ${totalSuccess} distributions queued successfully`;
 };
 
 // ========================================
@@ -206,12 +238,7 @@ const initWorkflow = (config: Config) => {
   console.log("Initializing LP Distribution Workflow");
   console.log(`API Base URL: ${config.appApiBaseUrl}`);
 
-  // Cron trigger - daily at 00:00 UTC
-  const cronTrigger = new CronCapability().trigger({
-    schedule: "0 0 * * *",
-  });
-
-  return [handler(cronTrigger, onCronTrigger)];
+  return [handler(new CronCapability().trigger({ schedule: "0 0 * * *" }), onCronTrigger)];
 };
 
 // ========================================

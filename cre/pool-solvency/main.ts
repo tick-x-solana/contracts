@@ -18,32 +18,58 @@
 
 import {
   CronCapability,
+  HTTPClient,
   handler,
+  consensusIdenticalAggregation,
+  ok,
+  json,
   type Runtime,
   type CronPayload,
   Runner,
 } from "@chainlink/cre-sdk";
-import { type Config, type EvmConfig, getEvmConfig, MIN_SOLVENCY_RATIO, RATIO_PRECISION } from "./types";
-import { createApiClient } from "./lib/api";
-import { submitSolvencyReport, readPoolBalance, readLatestSolvencyEpoch, withRetry } from "./lib/ethereum";
+import { type Config, type EvmConfig, getEvmConfig, RATIO_PRECISION, type LiabilityResponse } from "./types";
+import { submitSolvencyReport, readPoolBalance, readLatestSolvencyEpoch } from "./lib/ethereum";
+
+// ========================================
+// HTTP Fetch Functions
+// ========================================
+
+const fetchLiabilityData = (
+  runtime: Runtime<Config>,
+  apiKey: string
+): LiabilityResponse => {
+  const client = new HTTPClient();
+  const url = `${runtime.config.appApiBaseUrl}/risk/liability`;
+  
+  const response = client
+    .sendRequest(runtime, {
+      url,
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    })
+    .result();
+
+  if (!ok(response)) {
+    throw new Error(`HTTP request failed with status: ${response.statusCode}`);
+  }
+
+  return json(response) as LiabilityResponse;
+};
 
 // ========================================
 // Solvency Calculation
 // ========================================
 
-/**
- * Calculate solvency ratio with 1e18 precision
- */
 const calculateSolvencyRatio = (poolBalance: bigint, totalLiability: bigint): bigint => {
-  if (totalLiability === 0n) {
-    return BigInt(Number.MAX_SAFE_INTEGER); // Infinite solvency when no liability
+  if (totalLiability === BigInt(0)) {
+    return BigInt("999999999999999999999"); // Very high ratio when no liability
   }
   return (poolBalance * RATIO_PRECISION) / totalLiability;
 };
 
-/**
- * Format ratio for display (e.g., 1.5e18 -> "1.50x")
- */
 const formatRatio = (ratio: bigint): string => {
   const integerPart = ratio / RATIO_PRECISION;
   const fractionalPart = (ratio % RATIO_PRECISION) * 100n / RATIO_PRECISION;
@@ -54,11 +80,7 @@ const formatRatio = (ratio: bigint): string => {
 // Cron Trigger Handler
 // ========================================
 
-const onCronTrigger = async (
-  runtime: Runtime<Config>,
-  payload: CronPayload
-): Promise<string> => {
-  // Extract timestamp
+const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string => {
   let triggerTimestamp = Math.floor(Date.now() / 1000);
   if (payload.scheduledExecutionTime?.seconds) {
     triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
@@ -69,113 +91,73 @@ const onCronTrigger = async (
   runtime.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime.log("========================================");
 
+  // Get API key (3-tier fallback)
+  let apiKey = "";
   try {
-    // ========================================
-    // Step 1: Read On-Chain Pool Balance
-    // ========================================
-
-    const evmConfig = getEvmConfig(runtime.config);
-    
-    runtime.log("Reading pool balance from chain...");
-    const poolBalance = await withRetry(() => readPoolBalance(runtime, evmConfig));
-    runtime.log(`Pool balance: ${poolBalance.toString()}`);
-
-    // ========================================
-    // Step 2: Fetch Liability Data from API
-    // ========================================
-
-    const apiKey = (runtime as any).secrets?.APP_API_KEY || "mock-key";
-    const apiClient = createApiClient(
-      runtime.config.appApiBaseUrl,
-      apiKey,
-      runtime.config.appApiBaseUrl.includes("localhost")
-    );
-
-    runtime.log("Fetching liability data...");
-    const liabilityData = await withRetry(() => apiClient.getLiabilityData());
-    runtime.log(`Total liability: ${liabilityData.totalLiability}`);
-    runtime.log(`Utilization: ${liabilityData.utilizationBps} bps`);
-    runtime.log(`Max single bet exposure: ${liabilityData.maxSingleBetExposure}`);
-    runtime.log(`Outstanding bets: ${liabilityData.outstandingBets}`);
-
-    const totalLiability = BigInt(liabilityData.totalLiability);
-    const maxSingleBetExposure = BigInt(liabilityData.maxSingleBetExposure);
-
-    // ========================================
-    // Step 3: Calculate Solvency Ratio
-    // ========================================
-
-    runtime.log("Calculating solvency ratio...");
-    const solvencyRatio = calculateSolvencyRatio(poolBalance, totalLiability);
-    const minRatio = runtime.config.minSolvencyRatio 
-      ? BigInt(runtime.config.minSolvencyRatio)
-      : MIN_SOLVENCY_RATIO;
-    
-    const isHealthy = solvencyRatio >= minRatio;
-
-    runtime.log(`Solvency ratio: ${formatRatio(solvencyRatio)}`);
-    runtime.log(`Minimum required: ${formatRatio(minRatio)}`);
-    runtime.log(`Status: ${isHealthy ? "✅ HEALTHY" : "❌ UNDER-COLLATERALIZED"}`);
-
-    // ========================================
-    // Step 4: Alert on Under-Collateralization
-    // ========================================
-
-    if (!isHealthy) {
-      const alertMessage = `CRITICAL: Pool solvency ratio ${formatRatio(solvencyRatio)} is below minimum ${formatRatio(minRatio)}. Pool balance: ${poolBalance.toString()}, Liability: ${totalLiability.toString()}`;
-      
-      runtime.log(`⚠️  ${alertMessage}`);
-      
-      // Send alert via API
-      await apiClient.sendAlert(alertMessage, "critical");
-      
-      // Still continue to report the state on-chain for transparency
-      runtime.log("Reporting under-collateralized state on-chain...");
+    const secret = runtime.getSecret({ id: "APP_API_KEY" }).result();
+    apiKey = secret.value;
+  } catch (e) {
+    const envKey = (runtime as any).secrets?.APP_API_KEY;
+    if (envKey) {
+      apiKey = envKey;
+    } else {
+      apiKey = "8d920faa0c";
     }
-
-    // ========================================
-    // Step 5: Generate Epoch ID
-    // ========================================
-
-    // Use days since epoch as epoch ID (daily reports)
-    const epochId = Math.floor(triggerTimestamp / 86400);
-    runtime.log(`Epoch ID: ${epochId} (day ${epochId})`);
-
-    // Check for idempotency
-    const latestEpoch = await withRetry(() => readLatestSolvencyEpoch(runtime, evmConfig));
-    if (epochId <= latestEpoch) {
-      runtime.log(`Epoch ${epochId} already reported (latest: ${latestEpoch}). Skipping.`);
-      return `Epoch ${epochId} already reported`;
-    }
-
-    // ========================================
-    // Step 6: Submit On-Chain Report
-    // ========================================
-
-    const reportPayload = {
-      epochId,
-      poolBalance,
-      totalLiability,
-      utilizationBps: liabilityData.utilizationBps,
-      maxSingleBetExposure,
-    };
-
-    runtime.log("Submitting solvency report on-chain...");
-    const txHash = submitSolvencyReport(runtime, evmConfig, reportPayload);
-
-    runtime.log("========================================");
-    runtime.log("Pool Solvency PoR Workflow Completed");
-    runtime.log(`Transaction: ${txHash}`);
-    runtime.log(`Status: ${isHealthy ? "HEALTHY" : "UNDER-COLLATERALIZED"}`);
-    runtime.log("========================================");
-
-    return `Solvency report submitted for epoch ${epochId}. Ratio: ${formatRatio(solvencyRatio)}, Status: ${isHealthy ? "HEALTHY" : "UNDER-COLLATERALIZED"}, Tx: ${txHash}`;
-
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    runtime.log(`ERROR: ${message}`);
-    throw error;
   }
+
+  const evmConfig = getEvmConfig(runtime.config);
+  const epochId = Math.floor(triggerTimestamp / 86400);
+
+  runtime.log("Reading pool balance from chain...");
+  const poolBalance = readPoolBalance(runtime, evmConfig);
+  runtime.log(`Pool balance: ${poolBalance.toString()}`);
+
+  runtime.log("Fetching liability data...");
+  const liabilityData = runtime.runInNodeMode(
+    (nodeRuntime) => fetchLiabilityData(nodeRuntime, apiKey),
+    consensusIdenticalAggregation<LiabilityResponse>()
+  )().result();
+  runtime.log(`Total liability: ${liabilityData.totalLiability}`);
+  runtime.log(`Utilization: ${liabilityData.utilizationBps} bps`);
+  runtime.log(`Max single bet exposure: ${liabilityData.maxSingleBetExposure}`);
+  runtime.log(`Outstanding bets: ${liabilityData.outstandingBets}`);
+
+  const totalLiability = BigInt(liabilityData.totalLiability);
+  const solvencyRatio = calculateSolvencyRatio(poolBalance, totalLiability);
+  const formattedRatio = formatRatio(solvencyRatio);
+
+  runtime.log("Calculating solvency ratio...");
+  runtime.log(`Solvency ratio: ${formattedRatio}`);
+
+  const minRatio = runtime.config.minSolvencyRatio ? BigInt(runtime.config.minSolvencyRatio) : 1500000000000000000n;
+  const isHealthy = solvencyRatio >= minRatio;
+
+  runtime.log(`Minimum required: ${formatRatio(minRatio)}`);
+  runtime.log(`Status: ${isHealthy ? "✅ HEALTHY" : "❌ UNDER-COLLATERALIZED"}`);
+
+  runtime.log(`Epoch ID: ${epochId}`);
+  const latestEpoch = readLatestSolvencyEpoch(runtime, evmConfig);
+  if (epochId <= latestEpoch) {
+    runtime.log(`Epoch ${epochId} already reported (latest: ${latestEpoch})`);
+    return `Epoch ${epochId} already reported`;
+  }
+
+  runtime.log("Submitting solvency report on-chain...");
+  const txHash = submitSolvencyReport(runtime, evmConfig, {
+    epochId,
+    poolBalance,
+    totalLiability,
+    utilizationBps: liabilityData.utilizationBps,
+    maxSingleBetExposure: BigInt(liabilityData.maxSingleBetExposure),
+  });
+
+  runtime.log("========================================");
+  runtime.log("Pool Solvency PoR Workflow Completed");
+  runtime.log(`Transaction: ${txHash}`);
+  runtime.log(`Status: ${isHealthy ? "HEALTHY" : "UNDER-COLLATERALIZED"}`);
+  runtime.log("========================================");
+
+  return `Solvency report submitted for epoch ${epochId}. Ratio: ${formattedRatio}, Status: ${isHealthy ? "HEALTHY" : "WARNING"}, Tx: ${txHash}`;
 };
 
 // ========================================
@@ -186,12 +168,7 @@ const initWorkflow = (config: Config) => {
   console.log("Initializing Pool Solvency PoR Workflow");
   console.log(`API Base URL: ${config.appApiBaseUrl}`);
 
-  // Cron trigger - daily at 00:00 UTC
-  const cronTrigger = new CronCapability().trigger({
-    schedule: "0 0 * * *",
-  });
-
-  return [handler(cronTrigger, onCronTrigger)];
+  return [handler(new CronCapability().trigger({ schedule: "0 0 * * *" }), onCronTrigger)];
 };
 
 // ========================================
