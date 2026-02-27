@@ -5,7 +5,7 @@
     {
       "chainSelectorName": "ethereum-testnet-sepolia",
       "chainId": 11155111,
-      "lpDistributorAddress": "0x32BC43d36EE16BaB6765A4447ED48DC3210969EC",
+      "lpDistributorAddress": "0x7570E1f97e0831E929B9525858586E274F5C9cf2",
       "gasLimit": "500000"
     }
   ]

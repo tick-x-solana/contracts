@@ -6,7 +6,7 @@ import {Settlement} from "../src/Settlement.sol";
 import {PoolReserve} from "../src/PoolReserve.sol";
 import {Roles} from "../src/Roles.sol";
 import {MockERC20} from "./PoolReserve.t.sol";
-import {SettlementBatchCommitted, PaidMarked, WithdrawableSet, TraderClaimed} from "../src/Events.sol";
+import {SettlementBatchCommitted, PaidMarked, TraderClaimed} from "../src/Events.sol";
 
 contract SettlementPoolReserveIntegrationTest is Test {
     Settlement public settlement;
@@ -50,7 +50,7 @@ contract SettlementPoolReserveIntegrationTest is Test {
         asset.mint(trader1, 100_000e18);
     }
 
-    // ==================== Full Flow Integration Test ====================
+    // ==================== Full Flow Integration Test (Demo: no balance tracking) ====================
 
     function test_FullSettlementFlow() public {
         // Step 1: LP provides liquidity
@@ -62,14 +62,13 @@ contract SettlementPoolReserveIntegrationTest is Test {
         assertEq(poolReserve.totalCollateral(), INITIAL_LP_DEPOSIT);
         assertEq(poolReserve.totalLPShares(), INITIAL_LP_DEPOSIT);
 
-        // Step 2: Trader deposits collateral
+        // Step 2: Trader deposits collateral (demo: no balance tracking, just transfers)
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), TRADER_DEPOSIT);
         poolReserve.depositTrader(TRADER_DEPOSIT);
         vm.stopPrank();
 
-        assertEq(poolReserve.traderBalanceOf(trader1), TRADER_DEPOSIT);
-        assertEq(poolReserve.totalTraderBalance(), TRADER_DEPOSIT);
+        // Total collateral includes trader deposit
         assertEq(poolReserve.totalCollateral(), INITIAL_LP_DEPOSIT + TRADER_DEPOSIT);
 
         // Step 3: Trader places a bet (off-chain), then wins
@@ -91,19 +90,13 @@ contract SettlementPoolReserveIntegrationTest is Test {
         assertEq(batch.totalPayout, WINNING_PAYOUT);
         assertEq(batch.withdrawableCap, withdrawableCap);
 
-        // Step 5: Set withdrawable for winning trader
-        vm.prank(owner);
-        settlement.setWithdrawableViaPoolReserve(trader1, withdrawableCap);
-
-        assertEq(poolReserve.traderWithdrawableOf(trader1), withdrawableCap);
-
-        // Step 6: Mark payout in settlement contract
+        // Step 5: Mark payout in settlement contract (no withdrawable setting needed for demo)
         vm.prank(owner);
         settlement.markPaid(trader1, WINNING_PAYOUT, BATCH_ID);
 
         assertEq(settlement.getPaidAmount(BATCH_ID, trader1), WINNING_PAYOUT);
 
-        // Step 7: Trader claims winnings
+        // Step 6: Trader claims winnings directly (demo: no withdrawable check)
         uint256 balanceBefore = asset.balanceOf(trader1);
         
         vm.prank(trader1);
@@ -111,10 +104,10 @@ contract SettlementPoolReserveIntegrationTest is Test {
 
         uint256 balanceAfter = asset.balanceOf(trader1);
         assertEq(balanceAfter, balanceBefore + WINNING_PAYOUT);
-        assertEq(poolReserve.traderWithdrawableOf(trader1), withdrawableCap - WINNING_PAYOUT);
-        assertEq(poolReserve.traderBalanceOf(trader1), TRADER_DEPOSIT - WINNING_PAYOUT); // Balance reduced by claim
+        // Pool collateral reduced by payout
+        assertEq(poolReserve.totalCollateral(), INITIAL_LP_DEPOSIT + TRADER_DEPOSIT - WINNING_PAYOUT);
 
-        // Step 8: Report solvency after settlement
+        // Step 7: Report solvency after settlement
         uint256 finalCollateral = poolReserve.totalCollateral();
         vm.prank(reporter);
         poolReserve.reportSolvency(
@@ -130,7 +123,7 @@ contract SettlementPoolReserveIntegrationTest is Test {
         assertEq(solvencyReport.solvencyRatio, type(uint256).max); // Infinite with no liability
     }
 
-    // ==================== Multi-Trader Settlement Flow ====================
+    // ==================== Multi-Trader Settlement Flow (Demo: no balance tracking) ====================
 
     function test_MultiTraderSettlementFlow() public {
         address trader2 = address(21);
@@ -144,7 +137,7 @@ contract SettlementPoolReserveIntegrationTest is Test {
         poolReserve.depositLP(50_000e18);
         vm.stopPrank();
 
-        // Multiple traders deposit
+        // Multiple traders deposit (demo: no balance tracking)
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), 1000e18);
         poolReserve.depositTrader(1000e18);
@@ -160,7 +153,8 @@ contract SettlementPoolReserveIntegrationTest is Test {
         poolReserve.depositTrader(3000e18);
         vm.stopPrank();
 
-        assertEq(poolReserve.totalTraderBalance(), 6000e18);
+        // Total collateral includes all deposits
+        assertEq(poolReserve.totalCollateral(), 56_000e18); // 50k + 6k
 
         // Batch commit settlement
         vm.prank(owner);
@@ -173,30 +167,15 @@ contract SettlementPoolReserveIntegrationTest is Test {
             block.timestamp + 300
         );
 
-        // Batch set withdrawable for multiple traders
-        address[] memory accounts = new address[](3);
-        accounts[0] = trader1;
-        accounts[1] = trader2;
-        accounts[2] = trader3;
-        
-        uint256[] memory amounts = new uint256[](3);
-        amounts[0] = 1500e18; // trader1 gets 500e18 winnings + 1000e18 deposit
-        amounts[1] = 2000e18; // trader2 breaks even
-        amounts[2] = 3000e18; // trader3 breaks even
-
-        vm.prank(owner);
-        settlement.batchSetWithdrawable(accounts, amounts);
-
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 1500e18);
-        assertEq(poolReserve.traderWithdrawableOf(trader2), 2000e18);
-        assertEq(poolReserve.traderWithdrawableOf(trader3), 3000e18);
-
-        // Traders claim their funds
+        // Traders claim their funds directly (demo: no withdrawable check)
+        uint256 trader1BalanceBefore = asset.balanceOf(trader1);
         vm.prank(trader1);
-        poolReserve.claimTrader(500e18); // Claim just the winnings
+        poolReserve.claimTrader(500e18); // Claim just some amount
 
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 1000e18);
-        assertEq(poolReserve.traderBalanceOf(trader1), 500e18); // 1000 deposit - 500 claimed
+        // Trader received tokens
+        assertEq(asset.balanceOf(trader1), trader1BalanceBefore + 500e18);
+        // Pool collateral reduced
+        assertEq(poolReserve.totalCollateral(), 55_500e18);
     }
 
     // ==================== Settlement with Solvency Check ====================
@@ -227,10 +206,6 @@ contract SettlementPoolReserveIntegrationTest is Test {
             block.timestamp + 300
         );
 
-        // Update withdrawable
-        vm.prank(owner);
-        settlement.setWithdrawableViaPoolReserve(trader1, 8000e18);
-
         // Report solvency before payout
         vm.prank(reporter);
         poolReserve.reportSolvency(
@@ -248,7 +223,7 @@ contract SettlementPoolReserveIntegrationTest is Test {
         uint256 expectedRatio = (initialCollateral * 1e18) / 3000e18;
         assertEq(report.solvencyRatio, expectedRatio); // ~8.33x
 
-        // Trader claims payout
+        // Trader claims payout directly (demo: no withdrawable check)
         vm.prank(trader1);
         poolReserve.claimTrader(3000e18);
 
@@ -267,7 +242,7 @@ contract SettlementPoolReserveIntegrationTest is Test {
         assertEq(reportAfter.solvencyRatio, type(uint256).max);
     }
 
-    // ==================== Sequential Settlements ====================
+    // ==================== Sequential Settlements (Demo: no balance tracking) ====================
 
     function test_SequentialSettlements() public {
         // Setup
@@ -281,6 +256,8 @@ contract SettlementPoolReserveIntegrationTest is Test {
         poolReserve.depositTrader(10_000e18);
         vm.stopPrank();
 
+        uint256 initialCollateral = poolReserve.totalCollateral();
+
         // First settlement - trader wins
         bytes32 batch1 = keccak256("batch_1");
         vm.prank(owner);
@@ -293,14 +270,12 @@ contract SettlementPoolReserveIntegrationTest is Test {
             block.timestamp + 300
         );
 
-        vm.prank(owner);
-        settlement.setWithdrawableViaPoolReserve(trader1, 12_000e18);
-
+        // Trader claims directly (demo: no withdrawable check)
         vm.prank(trader1);
         poolReserve.claimTrader(2000e18);
 
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 10_000e18);
-        assertEq(poolReserve.traderBalanceOf(trader1), 8000e18); // 10k - 2k claimed
+        // Pool collateral reduced
+        assertEq(poolReserve.totalCollateral(), initialCollateral - 2000e18);
 
         // Second settlement - trader wins again
         bytes32 batch2 = keccak256("batch_2");
@@ -309,19 +284,16 @@ contract SettlementPoolReserveIntegrationTest is Test {
             batch2,
             keccak256("merkle_2"),
             3000e18,
-            13_000e18, // Increased cap
+            13_000e18,
             block.timestamp + 300,
             block.timestamp + 600
         );
 
-        vm.prank(owner);
-        settlement.setWithdrawableViaPoolReserve(trader1, 13_000e18);
-
         vm.prank(trader1);
         poolReserve.claimTrader(3000e18);
 
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 10_000e18);
-        assertEq(poolReserve.traderBalanceOf(trader1), 5000e18); // 10k - 2k - 3k claimed
+        // Pool collateral further reduced
+        assertEq(poolReserve.totalCollateral(), initialCollateral - 2000e18 - 3000e18);
 
         // Verify both batches exist
         assertTrue(settlement.getBatch(batch1).exists);

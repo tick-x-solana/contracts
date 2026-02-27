@@ -9,7 +9,6 @@ import {
     LPWithdrawn,
     TraderDeposited,
     TraderClaimed,
-    WithdrawableSet,
     SolvencyReported,
     ReserveAllocatedToDistributor
 } from "../src/Events.sol";
@@ -19,8 +18,6 @@ import {
     InvalidAmount,
     ZeroAddress,
     InsufficientShares,
-    InsufficientWithdrawable,
-    InsufficientBalance,
     SolvencyRatioTooLow
 } from "../src/Errors.sol";
 import {IReceiver} from "../src/interfaces/IReceiver.sol";
@@ -254,8 +251,11 @@ contract PoolReserveTest is Test {
 
     // ==================== Trader Deposit Tests ====================
 
+    // ==================== Trader Deposit Tests (Demo: no balance tracking) ====================
+
     function test_TraderDeposit() public {
         uint256 depositAmount = 1000e18;
+        uint256 balanceBefore = asset.balanceOf(trader1);
         
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), depositAmount);
@@ -266,9 +266,8 @@ contract PoolReserveTest is Test {
         poolReserve.depositTrader(depositAmount);
         vm.stopPrank();
 
-        assertEq(poolReserve.traderBalanceOf(trader1), depositAmount);
-        assertEq(poolReserve.totalTraderBalance(), depositAmount);
-        assertEq(poolReserve.totalCollateral(), depositAmount);
+        // Tokens transferred to pool (no balance tracking in demo)
+        assertEq(asset.balanceOf(trader1), balanceBefore - depositAmount);
     }
 
     function test_TraderDepositRevertsOnZeroAmount() public {
@@ -277,90 +276,33 @@ contract PoolReserveTest is Test {
         poolReserve.depositTrader(0);
     }
 
-    // ==================== Trader Claim Tests ====================
+    // ==================== Trader Claim Tests (Demo: no withdrawable check) ====================
 
     function test_TraderClaim() public {
-        // Setup: Trader deposits
+        // Setup: Trader deposits first so pool has tokens
         uint256 depositAmount = 1000e18;
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), depositAmount);
         poolReserve.depositTrader(depositAmount);
-        vm.stopPrank();
 
-        // Settler sets withdrawable
-        vm.prank(settler);
-        poolReserve.setWithdrawable(trader1, 500e18);
-
-        // Trader claims
-        uint256 claimAmount = 300e18;
+        // Trader claims (no withdrawable check in demo)
+        uint256 claimAmount = 500e18;
         uint256 balanceBefore = asset.balanceOf(trader1);
         
-        vm.startPrank(trader1);
         vm.expectEmit(true, false, false, true);
         emit TraderClaimed(trader1, claimAmount);
         
         poolReserve.claimTrader(claimAmount);
         vm.stopPrank();
 
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 200e18);
-        assertEq(poolReserve.traderBalanceOf(trader1), 700e18);
-        assertEq(poolReserve.totalTraderBalance(), 700e18);
+        // Tokens returned to trader
         assertEq(asset.balanceOf(trader1), balanceBefore + claimAmount);
     }
 
-    function test_TraderClaimRevertsOnInsufficientWithdrawable() public {
-        // Setup: Trader deposits
-        uint256 depositAmount = 1000e18;
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositTrader(depositAmount);
-        vm.stopPrank();
-
-        // Settler sets withdrawable to 500
-        vm.prank(settler);
-        poolReserve.setWithdrawable(trader1, 500e18);
-
-        // Trader tries to claim more than withdrawable
+    function test_TraderClaimRevertsOnZeroAmount() public {
         vm.prank(trader1);
-        vm.expectRevert(InsufficientWithdrawable.selector);
-        poolReserve.claimTrader(600e18);
-    }
-
-    function test_TraderClaimRevertsOnInsufficientBalance() public {
-        // Setup: Trader deposits
-        uint256 depositAmount = 1000e18;
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositTrader(depositAmount);
-        vm.stopPrank();
-
-        // Settler sets withdrawable higher than balance (edge case)
-        vm.prank(settler);
-        poolReserve.setWithdrawable(trader1, 2000e18);
-
-        // Trader tries to claim more than balance
-        vm.prank(trader1);
-        vm.expectRevert(InsufficientBalance.selector);
-        poolReserve.claimTrader(1500e18);
-    }
-
-    // ==================== SetWithdrawable Tests ====================
-
-    function test_SetWithdrawable() public {
-        vm.prank(settler);
-        
-        vm.expectEmit(true, false, false, true);
-        emit WithdrawableSet(trader1, 500e18);
-        
-        poolReserve.setWithdrawable(trader1, 500e18);
-
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 500e18);
-    }
-
-    function test_SetWithdrawableRevertsForNonSettler() public {
-        vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
-        poolReserve.setWithdrawable(trader1, 500e18);
+        vm.expectRevert(InvalidAmount.selector);
+        poolReserve.claimTrader(0);
     }
 
     // ==================== Solvency Reporting Tests ====================
@@ -489,7 +431,7 @@ contract PoolReserveTest is Test {
         poolReserve.depositLP(1000e18);
         vm.stopPrank();
 
-        // Trader deposits
+        // Trader deposits (increases pool balance)
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), 500e18);
         poolReserve.depositTrader(500e18);
@@ -553,26 +495,22 @@ contract PoolReserveTest is Test {
         poolReserve.depositLP(1000e18);
         vm.stopPrank();
 
-        // Trader1 deposits
+        // Trader1 deposits (no balance tracking in demo, just transfers)
         vm.startPrank(trader1);
         asset.approve(address(poolReserve), 500e18);
         poolReserve.depositTrader(500e18);
         vm.stopPrank();
 
-        // Check state
+        // Check state - totalCollateral includes all pool assets
         assertEq(poolReserve.totalCollateral(), 1500e18);
         assertEq(poolReserve.totalLPShares(), 1000e18);
-        assertEq(poolReserve.totalTraderBalance(), 500e18);
 
-        // Set withdrawable and claim
-        vm.prank(settler);
-        poolReserve.setWithdrawable(trader1, 300e18);
-
+        // Trader claims directly (no withdrawable check in demo)
         vm.prank(trader1);
         poolReserve.claimTrader(200e18);
 
+        // Pool balance reduced
         assertEq(poolReserve.totalCollateral(), 1300e18);
-        assertEq(poolReserve.totalTraderBalance(), 300e18);
 
         // LP withdraws
         vm.prank(lp1);

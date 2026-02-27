@@ -209,23 +209,37 @@ export const readLatestSolvencyEpochId = (
     functionName: "latestSolvencyEpochId",
   });
 
-  const contractCall = evmClient
-    .callContract(runtime, {
-      call: encodeCallMsg({
-        from: zeroAddress,
-        to: poolReserveAddress,
-        data: calldata,
-      }),
-      blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
-    })
-    .result();
+  try {
+    const contractCall = evmClient
+      .callContract(runtime, {
+        call: encodeCallMsg({
+          from: zeroAddress,
+          to: poolReserveAddress,
+          data: calldata,
+        }),
+        blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+      })
+      .result();
 
-  const latestEpochId = decodeFunctionResult({
-    abi: POOL_RESERVE_ABI,
-    functionName: "latestSolvencyEpochId",
-    data: bytesToHex(contractCall.data),
-  }) as bigint;
+    const resultHex = bytesToHex(contractCall.data);
+    
+    // Handle empty response (contract returns 0x when no data)
+    if (resultHex === "0x" || resultHex === "0x0") {
+      runtime.log(`latestSolvencyEpochId: 0 (empty response, first report)`);
+      return 0;
+    }
 
-  runtime.log(`latestSolvencyEpochId: ${latestEpochId.toString()}`);
-  return Number(latestEpochId);
+    const latestEpochId = decodeFunctionResult({
+      abi: POOL_RESERVE_ABI,
+      functionName: "latestSolvencyEpochId",
+      data: resultHex,
+    }) as bigint;
+
+    runtime.log(`latestSolvencyEpochId: ${latestEpochId.toString()}`);
+    return Number(latestEpochId);
+  } catch (error) {
+    // If call fails (e.g., contract not deployed or no data), return 0 as default
+    runtime.log(`Failed to read latestSolvencyEpochId, defaulting to 0: ${error}`);
+    return 0;
+  }
 };

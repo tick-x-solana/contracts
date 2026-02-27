@@ -5,7 +5,7 @@
     {
       "chainSelectorName": "ethereum-testnet-sepolia",
       "chainId": 11155111,
-      "poolReserveAddress": "0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673",
+      "poolReserveAddress": "0x0b7400e10fd916A7B9eEe8981532aF9f38255bAf",
       "assetAddress": "0x779877A7B0D9E8603169DdbD7836e478b4624789",
       "gasLimit": "500000"
     }

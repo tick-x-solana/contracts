@@ -165,23 +165,4 @@ contract Settlement is ReceiverTemplate {
         return paidAmount[batchId][account];
     }
 
-    /// @notice Set withdrawable amount for an account via PoolReserve hook
-    /// @param account Account to set withdrawable for
-    /// @param amount New withdrawable amount
-    function setWithdrawableViaPoolReserve(address account, uint256 amount) external onlyOwner {
-        poolReserve.setWithdrawable(account, amount);
-    }
-
-    /// @notice Batch set withdrawable amounts for multiple accounts (gas optimization)
-    /// @param accounts Array of accounts
-    /// @param amounts Array of withdrawable amounts (must match accounts length)
-    function batchSetWithdrawable(address[] calldata accounts, uint256[] calldata amounts) external onlyOwner {
-        if (accounts.length != amounts.length) revert InvalidAmount();
-        if (accounts.length == 0) revert InvalidAmount();
-
-        for (uint256 i = 0; i < accounts.length; i++) {
-            if (accounts[i] == address(0)) revert ZeroAddress();
-            poolReserve.setWithdrawable(accounts[i], amounts[i]);
-        }
-    }
 }

@@ -138,9 +138,7 @@ contract SeedDemoData is Script {
         );
         console.log("Settlement batch committed");
 
-        // Set withdrawable for trader
-        settlement.setWithdrawableViaPoolReserve(trader1, withdrawableCap);
-        console.log("Trader withdrawable set");
+        // Note: withdrawable setting skipped for demo (traders can claim directly)
 
         // Mark payout
         settlement.markPaid(trader1, totalPayout, batchId);
@@ -177,7 +175,6 @@ contract SeedDemoData is Script {
         // ========== Summary ==========
         console.log("\n=== Demo Data Seeded ===");
         console.log("LP Shares:", poolReserve.totalLPShares());
-        console.log("Trader Balance:", poolReserve.traderBalanceOf(trader1));
         console.log("Total Collateral:", poolReserve.totalCollateral());
         console.log("Price Integrity Latest Epoch:", priceIntegrity.latestEpochId());
         console.log("Settlement Batch Count:", settlement.batchCount());

@@ -9,8 +9,6 @@ import {
     InvalidAmount,
     ZeroAddress,
     InsufficientShares,
-    InsufficientWithdrawable,
-    InsufficientBalance,
     SolvencyRatioTooLow
 } from "./Errors.sol";
 import {
@@ -18,7 +16,6 @@ import {
     LPWithdrawn,
     TraderDeposited,
     TraderClaimed,
-    WithdrawableSet,
     SolvencyReported,
     ReserveAllocatedToDistributor
 } from "./Events.sol";
@@ -45,15 +42,6 @@ contract PoolReserve is ReceiverTemplate {
     /// @notice LP shares per address
     mapping(address => uint256) public lpSharesOf;
 
-    /// @notice Trader balance (deposited collateral)
-    mapping(address => uint256) public traderBalanceOf;
-
-    /// @notice Trader withdrawable amount (capped by settlement commits)
-    mapping(address => uint256) public traderWithdrawableOf;
-
-    /// @notice Total trader balance across all traders
-    uint256 public totalTraderBalance;
-
     /// @notice Latest solvency epoch ID
     uint256 public latestSolvencyEpochId;
 
@@ -73,11 +61,6 @@ contract PoolReserve is ReceiverTemplate {
 
     modifier onlyOwner() override {
         if (msg.sender != roles.owner()) revert Unauthorized(msg.sender);
-        _;
-    }
-
-    modifier onlySettler() {
-        if (msg.sender != roles.settler()) revert Unauthorized(msg.sender);
         _;
     }
 
@@ -157,47 +140,28 @@ contract PoolReserve is ReceiverTemplate {
 
     // ==================== Trader Functions ====================
 
-    /// @notice Deposit trader collateral
+    /// @notice Deposit trader collateral (demo: no balance tracking)
     /// @param amount Amount of assets to deposit
     function depositTrader(uint256 amount) external {
         if (amount == 0) revert InvalidAmount();
 
-        // Update state
-        traderBalanceOf[msg.sender] += amount;
-        totalTraderBalance += amount;
-
-        // Transfer assets from trader
+        // Transfer assets from trader (no state tracking for demo)
         bool success = asset.transferFrom(msg.sender, address(this), amount);
         if (!success) revert InvalidAmount();
 
         emit TraderDeposited(msg.sender, amount);
     }
 
-    /// @notice Claim trader withdrawable amount (capped by settlement commits)
+    /// @notice Claim trader amount (demo: no withdrawable check)
     /// @param amount Amount to claim
     function claimTrader(uint256 amount) external {
         if (amount == 0) revert InvalidAmount();
-        if (traderWithdrawableOf[msg.sender] < amount) revert InsufficientWithdrawable();
-        if (traderBalanceOf[msg.sender] < amount) revert InsufficientBalance();
 
-        // Update state
-        traderWithdrawableOf[msg.sender] -= amount;
-        traderBalanceOf[msg.sender] -= amount;
-        totalTraderBalance -= amount;
-
-        // Transfer assets to trader
+        // Transfer assets to trader (no balance check for demo)
         bool success = asset.transfer(msg.sender, amount);
         if (!success) revert InvalidAmount();
 
         emit TraderClaimed(msg.sender, amount);
-    }
-
-    /// @notice Set withdrawable amount for a trader (called by settler)
-    /// @param account Trader address
-    /// @param amount New withdrawable amount
-    function setWithdrawable(address account, uint256 amount) external onlySettler {
-        traderWithdrawableOf[account] = amount;
-        emit WithdrawableSet(account, amount);
     }
 
     // ==================== Solvency Reporting ====================

@@ -30409,21 +30409,31 @@ var readLatestSolvencyEpochId = (runtime2, evmConfig) => {
     abi: POOL_RESERVE_ABI,
     functionName: "latestSolvencyEpochId"
   });
-  const contractCall = evmClient.callContract(runtime2, {
-    call: encodeCallMsg({
-      from: zeroAddress,
-      to: poolReserveAddress,
-      data: calldata
-    }),
-    blockNumber: LAST_FINALIZED_BLOCK_NUMBER
-  }).result();
-  const latestEpochId = decodeFunctionResult({
-    abi: POOL_RESERVE_ABI,
-    functionName: "latestSolvencyEpochId",
-    data: bytesToHex(contractCall.data)
-  });
-  runtime2.log(`latestSolvencyEpochId: ${latestEpochId.toString()}`);
-  return Number(latestEpochId);
+  try {
+    const contractCall = evmClient.callContract(runtime2, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: poolReserveAddress,
+        data: calldata
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER
+    }).result();
+    const resultHex = bytesToHex(contractCall.data);
+    if (resultHex === "0x" || resultHex === "0x0") {
+      runtime2.log(`latestSolvencyEpochId: 0 (empty response, first report)`);
+      return 0;
+    }
+    const latestEpochId = decodeFunctionResult({
+      abi: POOL_RESERVE_ABI,
+      functionName: "latestSolvencyEpochId",
+      data: resultHex
+    });
+    runtime2.log(`latestSolvencyEpochId: ${latestEpochId.toString()}`);
+    return Number(latestEpochId);
+  } catch (error48) {
+    runtime2.log(`Failed to read latestSolvencyEpochId, defaulting to 0: ${error48}`);
+    return 0;
+  }
 };
 var fetchLiabilityData = (runtime2, apiKey) => {
   const client = new ClientCapability2;

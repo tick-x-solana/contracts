@@ -5,7 +5,7 @@
     {
       "chainSelectorName": "ethereum-testnet-sepolia",
       "chainId": 11155111,
-      "strategyManagerAddress": "0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660",
+      "strategyManagerAddress": "0x1CB5b9fc0F24D26366aA8F2aeFE875fD356f4616",
       "gasLimit": "500000"
     }
   ]

@@ -44,13 +44,8 @@ contract SettlementTest is Test {
         // Deploy PoolReserve
         poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
         
-        // Deploy Settlement (pointing to poolReserve, but we'll update roles after)
+        // Deploy Settlement (pointing to poolReserve)
         settlement = new Settlement(address(roles), address(poolReserve), address(0x999));
-        
-        // Set Settlement contract as the settler in PoolReserve via Roles
-        // This allows Settlement to call setWithdrawable on PoolReserve
-        vm.prank(owner);
-        roles.setSettler(address(settlement));
         
         // Mint tokens to traders
         asset.mint(trader1, 100_000e18);
@@ -316,89 +311,6 @@ contract SettlementTest is Test {
         vm.prank(owner);
         vm.expectRevert(InvalidAmount.selector);
         settlement.markPaid(trader1, 100e18, BATCH_ID_1);
-    }
-
-    // ==================== Set Withdrawable Via Pool Reserve Tests ====================
-
-    function test_SetWithdrawableViaPoolReserve() public {
-        uint256 withdrawableAmount = 500e18;
-        
-        vm.prank(owner);
-        settlement.setWithdrawableViaPoolReserve(trader1, withdrawableAmount);
-
-        assertEq(poolReserve.traderWithdrawableOf(trader1), withdrawableAmount);
-    }
-
-    function test_SetWithdrawableViaPoolReserveRevertsForNonOwner() public {
-        vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
-        settlement.setWithdrawableViaPoolReserve(trader1, 500e18);
-    }
-
-    // ==================== Batch Set Withdrawable Tests ====================
-
-    function test_BatchSetWithdrawable() public {
-        address[] memory accounts = new address[](2);
-        accounts[0] = trader1;
-        accounts[1] = trader2;
-        
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 500e18;
-        amounts[1] = 1000e18;
-
-        vm.prank(owner);
-        settlement.batchSetWithdrawable(accounts, amounts);
-
-        assertEq(poolReserve.traderWithdrawableOf(trader1), 500e18);
-        assertEq(poolReserve.traderWithdrawableOf(trader2), 1000e18);
-    }
-
-    function test_BatchSetWithdrawableRevertsOnMismatchedArrays() public {
-        address[] memory accounts = new address[](2);
-        accounts[0] = trader1;
-        accounts[1] = trader2;
-        
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 500e18;
-
-        vm.prank(owner);
-        vm.expectRevert(InvalidAmount.selector);
-        settlement.batchSetWithdrawable(accounts, amounts);
-    }
-
-    function test_BatchSetWithdrawableRevertsOnEmptyArrays() public {
-        address[] memory accounts = new address[](0);
-        uint256[] memory amounts = new uint256[](0);
-
-        vm.prank(owner);
-        vm.expectRevert(InvalidAmount.selector);
-        settlement.batchSetWithdrawable(accounts, amounts);
-    }
-
-    function test_BatchSetWithdrawableRevertsOnZeroAddress() public {
-        address[] memory accounts = new address[](2);
-        accounts[0] = trader1;
-        accounts[1] = address(0);
-        
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 500e18;
-        amounts[1] = 1000e18;
-
-        vm.prank(owner);
-        vm.expectRevert(ZeroAddress.selector);
-        settlement.batchSetWithdrawable(accounts, amounts);
-    }
-
-    function test_BatchSetWithdrawableRevertsForNonOwner() public {
-        address[] memory accounts = new address[](1);
-        accounts[0] = trader1;
-        
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 500e18;
-
-        vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
-        settlement.batchSetWithdrawable(accounts, amounts);
     }
 
     // ==================== IReceiver / onReport Tests ====================
