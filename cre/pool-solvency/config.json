@@ -1,0 +1,12 @@
+{
+  "appApiBaseUrl": "http://localhost:3000/api/v1",
+  "evms": [
+    {
+      "chainSelectorName": "ethereum-testnet-sepolia",
+      "chainId": 11155111,
+      "poolReserveAddress": "0x0000000000000000000000000000000000000000",
+      "gasLimit": "300000"
+    }
+  ],
+  "minSolvencyRatio": "1500000000000000000"
+}

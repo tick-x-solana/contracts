@@ -1,0 +1,24 @@
+{
+  "name": "tapfun-cre-workflows",
+  "version": "1.0.0",
+  "description": "Chainlink Runtime Environment workflows for Tap.fun prediction gaming",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "postinstall": "bunx cre-setup",
+    "build": "tsc",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "lint": "eslint src/**/*.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@chainlink/cre-sdk": "0.0.8-alpha",
+    "viem": "^2.38.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.21",
+    "typescript": "^5.0.0"
+  }
+}

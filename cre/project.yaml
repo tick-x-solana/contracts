@@ -1,0 +1,30 @@
+# ==========================================================================
+# CRE PROJECT SETTINGS FILE - Tap.fun Workflows
+# ==========================================================================
+
+local-simulation:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://0xrpc.io/sep
+
+staging:
+  cre-cli:
+    don-family: "zone-a"
+  account:
+    workflow-owner-address: "(optional) Multi-signature contract address"
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${RPC_URL_SEPOLIA}
+    - chain-name: ethereum-testnet-sepolia-base
+      url: ${RPC_URL_BASE_SEPOLIA}
+
+production:
+  cre-cli:
+    don-family: "zone-a"
+  account:
+    workflow-owner-address: "${WORKFLOW_OWNER_ADDRESS}"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_URL_MAINNET}
+    - chain-name: ethereum-testnet-sepolia-base
+      url: ${RPC_URL_BASE}
