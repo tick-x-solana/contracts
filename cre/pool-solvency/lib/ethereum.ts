@@ -2,8 +2,24 @@
 // Pool Solvency EVM Interaction Helpers
 // ==========================================================================
 
-import { cre, type Runtime, getNetwork, bytesToHex, hexToBase64 } from "@chainlink/cre-sdk";
-import { encodeAbiParameters, parseAbiParameters } from "viem";
+import {
+  cre,
+  type Runtime,
+  getNetwork,
+  bytesToHex,
+  hexToBase64,
+  encodeCallMsg,
+  LAST_FINALIZED_BLOCK_NUMBER,
+} from "@chainlink/cre-sdk";
+import {
+  encodeAbiParameters,
+  parseAbiParameters,
+  encodeFunctionData,
+  decodeFunctionResult,
+  parseAbi,
+  zeroAddress,
+  type Address,
+} from "viem";
 import type { Config, EvmConfig } from "../types";
 
 // ========================================
@@ -57,6 +73,14 @@ export interface SolvencyReportPayload {
   utilizationBps: number;
   maxSingleBetExposure: bigint;
 }
+
+const ERC20_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
+const POOL_RESERVE_ABI = parseAbi([
+  "function latestSolvencyEpochId() view returns (uint256)",
+]);
 
 // ========================================
 // Encode Solvency Report
@@ -134,30 +158,74 @@ export const readPoolBalance = (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig
 ): bigint => {
-  runtime.log(`Reading pool balance from PoolReserve`);
-  
-  // In a real implementation, this would use EVM read capability
-  // For simulation, we return a mock value
-  // The actual balance would be read via:
-  // PoolReserve.totalCollateral() or asset.balanceOf(poolReserveAddress)
-  
-  // Return a simulated balance (e.g., 100,000 USDT worth)
-  return BigInt(100000) * BigInt(1e18);
+  runtime.log(`Reading pool balance via ERC20.balanceOf(poolReserveAddress)`);
+
+  const evmClient = createEvmClient(evmConfig.chainSelectorName);
+  const poolReserveAddress = evmConfig.poolReserveAddress as Address;
+  const assetAddress = evmConfig.assetAddress as Address;
+
+  const calldata = encodeFunctionData({
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [poolReserveAddress],
+  });
+
+  const contractCall = evmClient
+    .callContract(runtime, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: assetAddress,
+        data: calldata,
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+    })
+    .result();
+
+  const poolBalance = decodeFunctionResult({
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    data: bytesToHex(contractCall.data),
+  }) as bigint;
+
+  runtime.log(`Pool balance read: ${poolBalance.toString()} (asset: ${evmConfig.assetAddress})`);
+  return poolBalance;
 };
 
 // ========================================
 // Read Latest Solvency Epoch
 // ========================================
 
-export const readLatestSolvencyEpoch = (
+export const readLatestSolvencyEpochId = (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig
 ): number => {
-  runtime.log(`Reading latest solvency epoch from PoolReserve`);
-  
-  // In a real implementation, this would call:
-  // PoolReserve.latestSolvencyEpochId()
-  
-  // Return 0 for first run
-  return 0;
+  runtime.log(`Reading latestSolvencyEpochId from PoolReserve`);
+
+  const evmClient = createEvmClient(evmConfig.chainSelectorName);
+  const poolReserveAddress = evmConfig.poolReserveAddress as Address;
+
+  const calldata = encodeFunctionData({
+    abi: POOL_RESERVE_ABI,
+    functionName: "latestSolvencyEpochId",
+  });
+
+  const contractCall = evmClient
+    .callContract(runtime, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: poolReserveAddress,
+        data: calldata,
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+    })
+    .result();
+
+  const latestEpochId = decodeFunctionResult({
+    abi: POOL_RESERVE_ABI,
+    functionName: "latestSolvencyEpochId",
+    data: bytesToHex(contractCall.data),
+  }) as bigint;
+
+  runtime.log(`latestSolvencyEpochId: ${latestEpochId.toString()}`);
+  return Number(latestEpochId);
 };

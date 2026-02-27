@@ -28,7 +28,7 @@ import {
   Runner,
 } from "@chainlink/cre-sdk";
 import { type Config, type EvmConfig, getEvmConfig, RATIO_PRECISION, type LiabilityResponse } from "./types";
-import { submitSolvencyReport, readPoolBalance, readLatestSolvencyEpoch } from "./lib/ethereum";
+import { submitSolvencyReport, readPoolBalance, readLatestSolvencyEpochId } from "./lib/ethereum";
 
 // ========================================
 // HTTP Fetch Functions
@@ -106,7 +106,7 @@ const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string =
   }
 
   const evmConfig = getEvmConfig(runtime.config);
-  const epochId = Math.floor(triggerTimestamp / 86400);
+  const epochId = Math.floor(triggerTimestamp / 60); // Example: 1 epoch per minute
 
   runtime.log("Reading pool balance from chain...");
   const poolBalance = readPoolBalance(runtime, evmConfig);
@@ -136,10 +136,10 @@ const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string =
   runtime.log(`Status: ${isHealthy ? "✅ HEALTHY" : "❌ UNDER-COLLATERALIZED"}`);
 
   runtime.log(`Epoch ID: ${epochId}`);
-  const latestEpoch = readLatestSolvencyEpoch(runtime, evmConfig);
+  const latestEpoch = readLatestSolvencyEpochId(runtime, evmConfig);
   if (epochId <= latestEpoch) {
-    runtime.log(`Epoch ${epochId} already reported (latest: ${latestEpoch})`);
-    return `Epoch ${epochId} already reported`;
+    runtime.log("New epoch not reached");
+    return `New epoch not reached (current: ${epochId}, latest: ${latestEpoch})`;
   }
 
   runtime.log("Submitting solvency report on-chain...");
