@@ -29128,7 +29128,7 @@ config(en_default2());
 var evmConfigSchema = exports_external2.object({
   chainSelectorName: exports_external2.string(),
   chainId: exports_external2.number(),
-  strategyManagerAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  lpDistributorAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
   gasLimit: exports_external2.string().optional()
 });
 var configSchema = exports_external2.object({
@@ -29141,16 +29141,24 @@ var getEvmConfig = (config2) => {
   }
   return config2.evms[0];
 };
-var volatilityRegimeSchema = exports_external2.object({
-  regimeId: exports_external2.number().int().positive(),
-  fortressSpreadBps: exports_external2.number().int().positive().max(1e4),
-  maxMultiplier: exports_external2.number().int().positive().max(1000),
-  effectiveTs: exports_external2.number().int().positive(),
-  volatilityIndex: exports_external2.string(),
-  regimeName: exports_external2.string()
+var lpShareSchema = exports_external2.object({
+  lp: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  shares: exports_external2.string()
+});
+var distributionDestinationSchema = exports_external2.object({
+  chainSelector: exports_external2.number().int().positive(),
+  receiver: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  amount: exports_external2.string()
+});
+var distributionBatchSchema = exports_external2.object({
+  epochId: exports_external2.number().int().positive(),
+  totalRewards: exports_external2.string(),
+  snapshotBlock: exports_external2.number().int().positive(),
+  lpShares: exports_external2.array(lpShareSchema),
+  destinations: exports_external2.array(distributionDestinationSchema)
 });
 
-class RealStrategyApiClient {
+class RealLpDistributionApiClient {
   baseUrl;
   apiKey;
   constructor(baseUrl, apiKey) {
@@ -29173,68 +29181,61 @@ class RealStrategyApiClient {
     }
     return response.json();
   }
-  async getCurrentStrategyRegime() {
-    return this.fetch(`/strategy/current`);
+  async getPendingDistributionBatches() {
+    const data = await this.fetch(`/distribution/batches/pending`);
+    return data.batches;
   }
-  async logStrategyUpdate(regimeId, fortressSpreadBps, maxMultiplier, txHash) {
-    await this.fetch(`/strategy/updates`, {
+  async markBatchDistributed(batchId, results) {
+    await this.fetch(`/distribution/batches/${batchId}/distributed`, {
       method: "POST",
       body: JSON.stringify({
-        regimeId,
-        fortressSpreadBps,
-        maxMultiplier,
-        txHash,
-        timestamp: Math.floor(Date.now() / 1000)
+        results,
+        distributedAt: Math.floor(Date.now() / 1000)
       })
     });
   }
 }
 
-class MockStrategyApiClient {
+class MockLpDistributionApiClient {
   seededRandom(seed) {
     const x = Math.sin(seed * 9999) * 1e4;
     return x - Math.floor(x);
   }
-  async getCurrentStrategyRegime() {
-    const seed = Math.floor(Date.now() / 3600000);
-    const regimeId = Math.floor(this.seededRandom(seed) * 3) + 1;
-    const regimes = {
-      1: {
-        regimeId: 1,
-        fortressSpreadBps: 100,
-        maxMultiplier: 100,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.25",
-        regimeName: "LOW_VOL"
-      },
-      2: {
-        regimeId: 2,
-        fortressSpreadBps: 150,
-        maxMultiplier: 80,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.45",
-        regimeName: "NORMAL"
-      },
-      3: {
-        regimeId: 3,
-        fortressSpreadBps: 300,
-        maxMultiplier: 50,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.75",
-        regimeName: "HIGH_VOL"
+  async getPendingDistributionBatches() {
+    const seed = Math.floor(Date.now() / 86400000);
+    return [
+      {
+        epochId: seed,
+        totalRewards: (BigInt(Math.floor(this.seededRandom(seed) * 1e4)) * BigInt(1000000000000000000)).toString(),
+        snapshotBlock: 12345678 + Math.floor(this.seededRandom(seed) * 1000),
+        lpShares: [
+          { lp: "0x1234567890123456789012345678901234567890", shares: "1000000000000000000000" },
+          { lp: "0x0987654321098765432109876543210987654321", shares: "500000000000000000000" }
+        ],
+        destinations: [
+          {
+            chainSelector: 16015286601757825000,
+            receiver: "0x1234567890123456789012345678901234567890",
+            amount: "5000000000000000000000"
+          },
+          {
+            chainSelector: 14767482510784807000,
+            receiver: "0x0987654321098765432109876543210987654321",
+            amount: "3000000000000000000000"
+          }
+        ]
       }
-    };
-    return regimes[regimeId];
+    ];
   }
-  async logStrategyUpdate(regimeId, fortressSpreadBps, maxMultiplier, txHash) {
-    console.log(`[Mock] Strategy update logged: regime=${regimeId}, spread=${fortressSpreadBps}, multiplier=${maxMultiplier}, tx=${txHash}`);
+  async markBatchDistributed(batchId, results) {
+    console.log(`[Mock] Batch ${batchId} marked distributed with ${results.length} results`);
   }
 }
 var createApiClient = (baseUrl, apiKey, useMock = false) => {
   if (useMock || baseUrl.includes("localhost")) {
-    return new MockStrategyApiClient;
+    return new MockLpDistributionApiClient;
   }
-  return new RealStrategyApiClient(baseUrl, apiKey);
+  return new RealLpDistributionApiClient(baseUrl, apiKey);
 };
 init_exports();
 init_encodeAbiParameters();
@@ -29264,24 +29265,27 @@ var createEvmClient = (chainSelectorName, isTestnet = true) => {
   }
   return new cre.capabilities.EVMClient(network248.chainSelector.selector);
 };
-var encodeStrategyUpdate = (payload) => {
+var encodeDistribution = (payload) => {
   return encodeAbiParameters(parseAbiParameters([
-    "uint256 regimeId",
-    "uint256 fortressSpreadBps",
-    "uint256 maxMultiplier"
+    "uint256 epochId",
+    "uint256 amount",
+    "uint64 dstChainSelector",
+    "address receiver"
   ]), [
-    BigInt(payload.regimeId),
-    BigInt(payload.fortressSpreadBps),
-    BigInt(payload.maxMultiplier)
+    BigInt(payload.epochId),
+    payload.amount,
+    payload.dstChainSelector,
+    payload.receiver
   ]);
 };
-var setVolatilityRegime = (runtime2, evmConfig, payload) => {
+var queueDistribution = (runtime2, evmConfig, payload) => {
   const evmClient = createEvmClient(evmConfig.chainSelectorName);
-  const reportData = encodeStrategyUpdate(payload);
-  runtime2.log(`Setting volatility regime`);
-  runtime2.log(`Regime ID: ${payload.regimeId}`);
-  runtime2.log(`Fortress Spread: ${payload.fortressSpreadBps} bps`);
-  runtime2.log(`Max Multiplier: ${payload.maxMultiplier}x`);
+  const reportData = encodeDistribution(payload);
+  runtime2.log(`Queueing distribution`);
+  runtime2.log(`Epoch ID: ${payload.epochId}`);
+  runtime2.log(`Amount: ${payload.amount.toString()}`);
+  runtime2.log(`Destination Chain: ${payload.dstChainSelector.toString()}`);
+  runtime2.log(`Receiver: ${payload.receiver}`);
   const reportResponse = runtime2.report({
     encodedPayload: hexToBase64(reportData),
     encoderName: "evm",
@@ -29289,44 +29293,19 @@ var setVolatilityRegime = (runtime2, evmConfig, payload) => {
     hashingAlgo: "keccak256"
   }).result();
   const writeResult = evmClient.writeReport(runtime2, {
-    receiver: evmConfig.strategyManagerAddress,
+    receiver: evmConfig.lpDistributorAddress,
     report: reportResponse,
     gasConfig: {
       gasLimit: evmConfig.gasLimit
     }
   }).result();
   const txHash = bytesToHex(writeResult.txHash ?? new Uint8Array(32));
-  runtime2.log(`Volatility regime set. Tx: ${txHash}`);
+  runtime2.log(`Distribution queued. Tx: ${txHash}`);
   return txHash;
 };
-var readCurrentRegime = async (runtime2, evmConfig) => {
-  runtime2.log(`Reading current regime from StrategyManager`);
-  return null;
-};
-var regimeExists = async (runtime2, evmConfig, regimeId) => {
-  runtime2.log(`Checking if regime ${regimeId} exists`);
+var distributionExists = async (runtime2, evmConfig, epochId) => {
+  runtime2.log(`Checking if distribution exists for epoch ${epochId}`);
   return false;
-};
-var REGIMES = {
-  1: { regimeId: 1, fortressSpreadBps: 100, maxMultiplier: 100, regimeName: "LOW_VOL" },
-  2: { regimeId: 2, fortressSpreadBps: 150, maxMultiplier: 80, regimeName: "NORMAL" },
-  3: { regimeId: 3, fortressSpreadBps: 300, maxMultiplier: 50, regimeName: "HIGH_VOL" }
-};
-var determineTargetRegime = (volatilityIndex) => {
-  if (volatilityIndex < 0.3) {
-    return REGIMES[1];
-  } else if (volatilityIndex < 0.6) {
-    return REGIMES[2];
-  } else {
-    return REGIMES[3];
-  }
-};
-var isNoOp = async (runtime2, evmConfig, targetRegime) => {
-  const currentRegime = await withRetry(() => readCurrentRegime(runtime2, evmConfig));
-  if (!currentRegime) {
-    return false;
-  }
-  return currentRegime.regimeId === targetRegime.regimeId;
 };
 var onCronTrigger = async (runtime2, payload) => {
   let triggerTimestamp = Math.floor(Date.now() / 1000);
@@ -29334,62 +29313,94 @@ var onCronTrigger = async (runtime2, payload) => {
     triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
   }
   runtime2.log("========================================");
-  runtime2.log("Strategy Rebalance Workflow Started");
+  runtime2.log("LP Distribution Workflow Started");
   runtime2.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime2.log("========================================");
   try {
-    const evmConfig = getEvmConfig(runtime2.config);
-    runtime2.log("Reading current regime from chain...");
-    const currentRegime = await withRetry(() => readCurrentRegime(runtime2, evmConfig));
-    if (currentRegime) {
-      runtime2.log(`Current regime: ${currentRegime.regimeId} (spread: ${currentRegime.fortressSpreadBps} bps, multiplier: ${currentRegime.maxMultiplier}x)`);
-    } else {
-      runtime2.log("No current regime set on-chain");
-    }
     const apiKey = runtime2.secrets?.APP_API_KEY || "mock-key";
     const apiClient = createApiClient(runtime2.config.appApiBaseUrl, apiKey, runtime2.config.appApiBaseUrl.includes("localhost"));
-    runtime2.log("Fetching current strategy regime...");
-    const strategyRegime = await withRetry(() => apiClient.getCurrentStrategyRegime());
-    const volatilityIndex = parseFloat(strategyRegime.volatilityIndex);
-    runtime2.log(`Volatility index: ${volatilityIndex}`);
-    runtime2.log(`Current regime name: ${strategyRegime.regimeName}`);
-    runtime2.log("Determining target regime...");
-    const targetRegime = determineTargetRegime(volatilityIndex);
-    runtime2.log(`Target regime: ${targetRegime.regimeName} (${targetRegime.regimeId})`);
-    runtime2.log(`  Fortress spread: ${targetRegime.fortressSpreadBps} bps`);
-    runtime2.log(`  Max multiplier: ${targetRegime.maxMultiplier}x`);
-    runtime2.log("Checking for no-op update...");
-    const noOp = await isNoOp(runtime2, evmConfig, targetRegime);
-    if (noOp) {
-      runtime2.log("No-op detected: target regime matches current on-chain regime. Skipping.");
-      return `No-op: regime ${targetRegime.regimeName} already active`;
+    runtime2.log("Fetching pending distribution batches...");
+    const batches = await withRetry(() => apiClient.getPendingDistributionBatches());
+    runtime2.log(`Found ${batches.length} pending batches`);
+    if (batches.length === 0) {
+      runtime2.log("No pending batches to process");
+      return "No pending batches";
     }
-    runtime2.log("Checking idempotency...");
-    const exists = await withRetry(() => regimeExists(runtime2, evmConfig, targetRegime.regimeId));
-    if (exists) {
-      runtime2.log(`Regime ${targetRegime.regimeId} already exists on-chain. Skipping.`);
-      return `Skipped: regime ${targetRegime.regimeId} already exists`;
+    const evmConfig = getEvmConfig(runtime2.config);
+    const allResults = [];
+    for (const batch of batches) {
+      runtime2.log(`----------------------------------------`);
+      runtime2.log(`Processing batch: epoch ${batch.epochId}`);
+      runtime2.log(`Total rewards: ${batch.totalRewards}`);
+      runtime2.log(`Snapshot block: ${batch.snapshotBlock}`);
+      runtime2.log(`LP shares count: ${batch.lpShares.length}`);
+      runtime2.log(`Destinations count: ${batch.destinations.length}`);
+      const exists = await withRetry(() => distributionExists(runtime2, evmConfig, batch.epochId));
+      if (exists) {
+        runtime2.log(`Distribution for epoch ${batch.epochId} already exists. Skipping.`);
+        continue;
+      }
+      const batchResults = [];
+      for (const destination of batch.destinations) {
+        runtime2.log(`Processing destination:`);
+        runtime2.log(`  Chain: ${destination.chainSelector}`);
+        runtime2.log(`  Receiver: ${destination.receiver}`);
+        runtime2.log(`  Amount: ${destination.amount}`);
+        try {
+          const distributionPayload = {
+            epochId: batch.epochId,
+            amount: BigInt(destination.amount),
+            dstChainSelector: BigInt(destination.chainSelector),
+            receiver: destination.receiver
+          };
+          runtime2.log("Queueing distribution on-chain...");
+          const txHash = queueDistribution(runtime2, evmConfig, distributionPayload);
+          batchResults.push({
+            epochId: batch.epochId,
+            destination,
+            txHash,
+            status: "success"
+          });
+          runtime2.log(`✅ Distribution queued. Tx: ${txHash}`);
+        } catch (error48) {
+          const message = error48 instanceof Error ? error48.message : String(error48);
+          runtime2.log(`❌ Failed to queue distribution: ${message}`);
+          batchResults.push({
+            epochId: batch.epochId,
+            destination,
+            txHash: "",
+            status: "failed",
+            error: message
+          });
+          continue;
+        }
+      }
+      const successCount = batchResults.filter((r) => r.status === "success").length;
+      const failedCount = batchResults.filter((r) => r.status === "failed").length;
+      runtime2.log(`Batch ${batch.epochId} complete:`);
+      runtime2.log(`  Success: ${successCount}`);
+      runtime2.log(`  Failed: ${failedCount}`);
+      try {
+        await withRetry(() => apiClient.markBatchDistributed(batch.epochId, batchResults));
+        runtime2.log("Batch marked as distributed");
+      } catch (error48) {
+        const message = error48 instanceof Error ? error48.message : String(error48);
+        runtime2.log(`Warning: Failed to mark batch distributed: ${message}`);
+      }
+      allResults.push(...batchResults);
     }
-    runtime2.log("Updating volatility regime on-chain...");
-    const txHash = setVolatilityRegime(runtime2, evmConfig, {
-      regimeId: targetRegime.regimeId,
-      fortressSpreadBps: targetRegime.fortressSpreadBps,
-      maxMultiplier: targetRegime.maxMultiplier
-    });
-    runtime2.log("Logging strategy update...");
-    try {
-      await apiClient.logStrategyUpdate(targetRegime.regimeId, targetRegime.fortressSpreadBps, targetRegime.maxMultiplier, txHash);
-      runtime2.log("Strategy update logged");
-    } catch (error48) {
-      const message = error48 instanceof Error ? error48.message : String(error48);
-      runtime2.log(`Warning: Failed to log strategy update: ${message}`);
-    }
+    const totalSuccess = allResults.filter((r) => r.status === "success").length;
+    const totalFailed = allResults.filter((r) => r.status === "failed").length;
     runtime2.log("========================================");
-    runtime2.log("Strategy Rebalance Workflow Completed");
-    runtime2.log(`Regime ${targetRegime.regimeName} (${targetRegime.regimeId}) activated`);
-    runtime2.log(`Transaction: ${txHash}`);
+    runtime2.log("LP Distribution Workflow Completed");
+    runtime2.log(`Total distributions: ${allResults.length}`);
+    runtime2.log(`Successful: ${totalSuccess}`);
+    runtime2.log(`Failed: ${totalFailed}`);
     runtime2.log("========================================");
-    return `Strategy updated to ${targetRegime.regimeName} (regime ${targetRegime.regimeId}). Tx: ${txHash}`;
+    if (totalFailed > 0) {
+      return `LP distribution completed with ${totalFailed} failures. Successful: ${totalSuccess}, Failed: ${totalFailed}`;
+    }
+    return `All ${totalSuccess} distributions queued successfully`;
   } catch (error48) {
     const message = error48 instanceof Error ? error48.message : String(error48);
     runtime2.log(`ERROR: ${message}`);
@@ -29397,10 +29408,10 @@ var onCronTrigger = async (runtime2, payload) => {
   }
 };
 var initWorkflow = (config2) => {
-  console.log("Initializing Strategy Rebalance Workflow");
+  console.log("Initializing LP Distribution Workflow");
   console.log(`API Base URL: ${config2.appApiBaseUrl}`);
   const cronTrigger = new CronCapability().trigger({
-    schedule: "*/15 * * * *"
+    schedule: "0 0 * * *"
   });
   return [handler(cronTrigger, onCronTrigger)];
 };

@@ -7,8 +7,5 @@
       "strategyManagerAddress": "0x0000000000000000000000000000000000000000",
       "gasLimit": "300000"
     }
-  ],
-  "auth": {
-    "apiKeyHeader": "X-API-Key"
-  }
+  ]
 }

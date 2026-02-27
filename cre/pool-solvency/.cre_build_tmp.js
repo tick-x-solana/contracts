@@ -29128,12 +29128,13 @@ config(en_default2());
 var evmConfigSchema = exports_external2.object({
   chainSelectorName: exports_external2.string(),
   chainId: exports_external2.number(),
-  strategyManagerAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  poolReserveAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
   gasLimit: exports_external2.string().optional()
 });
 var configSchema = exports_external2.object({
   appApiBaseUrl: exports_external2.string().url(),
-  evms: exports_external2.array(evmConfigSchema)
+  evms: exports_external2.array(evmConfigSchema),
+  minSolvencyRatio: exports_external2.string().optional()
 });
 var getEvmConfig = (config2) => {
   if (config2.evms.length === 0) {
@@ -29141,16 +29142,17 @@ var getEvmConfig = (config2) => {
   }
   return config2.evms[0];
 };
-var volatilityRegimeSchema = exports_external2.object({
-  regimeId: exports_external2.number().int().positive(),
-  fortressSpreadBps: exports_external2.number().int().positive().max(1e4),
-  maxMultiplier: exports_external2.number().int().positive().max(1000),
-  effectiveTs: exports_external2.number().int().positive(),
-  volatilityIndex: exports_external2.string(),
-  regimeName: exports_external2.string()
+var liabilityResponseSchema = exports_external2.object({
+  timestamp: exports_external2.number(),
+  totalLiability: exports_external2.string(),
+  utilizationBps: exports_external2.number(),
+  maxSingleBetExposure: exports_external2.string(),
+  outstandingBets: exports_external2.number()
 });
+var MIN_SOLVENCY_RATIO = 1500000000000000000n;
+var RATIO_PRECISION = 1000000000000000000n;
 
-class RealStrategyApiClient {
+class RealSolvencyApiClient {
   baseUrl;
   apiKey;
   constructor(baseUrl, apiKey) {
@@ -29173,68 +29175,49 @@ class RealStrategyApiClient {
     }
     return response.json();
   }
-  async getCurrentStrategyRegime() {
-    return this.fetch(`/strategy/current`);
+  async getLiabilityData() {
+    return this.fetch(`/risk/liability`);
   }
-  async logStrategyUpdate(regimeId, fortressSpreadBps, maxMultiplier, txHash) {
-    await this.fetch(`/strategy/updates`, {
+  async sendAlert(message, severity) {
+    await this.fetch(`/alerts`, {
       method: "POST",
       body: JSON.stringify({
-        regimeId,
-        fortressSpreadBps,
-        maxMultiplier,
-        txHash,
+        message,
+        severity,
+        source: "pool-solvency-workflow",
         timestamp: Math.floor(Date.now() / 1000)
       })
     });
   }
 }
 
-class MockStrategyApiClient {
+class MockSolvencyApiClient {
+  isHealthy = true;
   seededRandom(seed) {
     const x = Math.sin(seed * 9999) * 1e4;
     return x - Math.floor(x);
   }
-  async getCurrentStrategyRegime() {
-    const seed = Math.floor(Date.now() / 3600000);
-    const regimeId = Math.floor(this.seededRandom(seed) * 3) + 1;
-    const regimes = {
-      1: {
-        regimeId: 1,
-        fortressSpreadBps: 100,
-        maxMultiplier: 100,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.25",
-        regimeName: "LOW_VOL"
-      },
-      2: {
-        regimeId: 2,
-        fortressSpreadBps: 150,
-        maxMultiplier: 80,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.45",
-        regimeName: "NORMAL"
-      },
-      3: {
-        regimeId: 3,
-        fortressSpreadBps: 300,
-        maxMultiplier: 50,
-        effectiveTs: Math.floor(Date.now() / 1000),
-        volatilityIndex: "0.75",
-        regimeName: "HIGH_VOL"
-      }
+  async getLiabilityData() {
+    const seed = Math.floor(Date.now() / 86400000);
+    const baseLiability = this.isHealthy ? 50000 : 90000;
+    const baseExposure = this.isHealthy ? 5000 : 15000;
+    return {
+      timestamp: Math.floor(Date.now() / 1000),
+      totalLiability: (BigInt(Math.floor(this.seededRandom(seed) * baseLiability)) * BigInt(1000000000000000000)).toString(),
+      utilizationBps: Math.floor(this.seededRandom(seed + 1) * 1000) + (this.isHealthy ? 500 : 1500),
+      maxSingleBetExposure: (BigInt(Math.floor(this.seededRandom(seed + 2) * baseExposure)) * BigInt(1000000000000000000)).toString(),
+      outstandingBets: Math.floor(this.seededRandom(seed + 3) * 100) + 50
     };
-    return regimes[regimeId];
   }
-  async logStrategyUpdate(regimeId, fortressSpreadBps, maxMultiplier, txHash) {
-    console.log(`[Mock] Strategy update logged: regime=${regimeId}, spread=${fortressSpreadBps}, multiplier=${maxMultiplier}, tx=${txHash}`);
+  async sendAlert(message, severity) {
+    console.log(`[ALERT:${severity.toUpperCase()}] ${message}`);
   }
 }
 var createApiClient = (baseUrl, apiKey, useMock = false) => {
   if (useMock || baseUrl.includes("localhost")) {
-    return new MockStrategyApiClient;
+    return new MockSolvencyApiClient;
   }
-  return new RealStrategyApiClient(baseUrl, apiKey);
+  return new RealSolvencyApiClient(baseUrl, apiKey);
 };
 init_exports();
 init_encodeAbiParameters();
@@ -29264,24 +29247,29 @@ var createEvmClient = (chainSelectorName, isTestnet = true) => {
   }
   return new cre.capabilities.EVMClient(network248.chainSelector.selector);
 };
-var encodeStrategyUpdate = (payload) => {
+var encodeSolvencyReport = (payload) => {
   return encodeAbiParameters(parseAbiParameters([
-    "uint256 regimeId",
-    "uint256 fortressSpreadBps",
-    "uint256 maxMultiplier"
+    "uint256 epochId",
+    "uint256 poolBalance",
+    "uint256 totalLiability",
+    "uint256 utilizationBps",
+    "uint256 maxSingleBetExposure"
   ]), [
-    BigInt(payload.regimeId),
-    BigInt(payload.fortressSpreadBps),
-    BigInt(payload.maxMultiplier)
+    BigInt(payload.epochId),
+    payload.poolBalance,
+    payload.totalLiability,
+    BigInt(payload.utilizationBps),
+    payload.maxSingleBetExposure
   ]);
 };
-var setVolatilityRegime = (runtime2, evmConfig, payload) => {
+var submitSolvencyReport = (runtime2, evmConfig, payload) => {
   const evmClient = createEvmClient(evmConfig.chainSelectorName);
-  const reportData = encodeStrategyUpdate(payload);
-  runtime2.log(`Setting volatility regime`);
-  runtime2.log(`Regime ID: ${payload.regimeId}`);
-  runtime2.log(`Fortress Spread: ${payload.fortressSpreadBps} bps`);
-  runtime2.log(`Max Multiplier: ${payload.maxMultiplier}x`);
+  const reportData = encodeSolvencyReport(payload);
+  runtime2.log(`Submitting solvency report`);
+  runtime2.log(`Epoch ID: ${payload.epochId}`);
+  runtime2.log(`Pool Balance: ${payload.poolBalance.toString()}`);
+  runtime2.log(`Total Liability: ${payload.totalLiability.toString()}`);
+  runtime2.log(`Utilization: ${payload.utilizationBps} bps`);
   const reportResponse = runtime2.report({
     encodedPayload: hexToBase64(reportData),
     encoderName: "evm",
@@ -29289,44 +29277,34 @@ var setVolatilityRegime = (runtime2, evmConfig, payload) => {
     hashingAlgo: "keccak256"
   }).result();
   const writeResult = evmClient.writeReport(runtime2, {
-    receiver: evmConfig.strategyManagerAddress,
+    receiver: evmConfig.poolReserveAddress,
     report: reportResponse,
     gasConfig: {
       gasLimit: evmConfig.gasLimit
     }
   }).result();
   const txHash = bytesToHex(writeResult.txHash ?? new Uint8Array(32));
-  runtime2.log(`Volatility regime set. Tx: ${txHash}`);
+  runtime2.log(`Solvency report submitted. Tx: ${txHash}`);
   return txHash;
 };
-var readCurrentRegime = async (runtime2, evmConfig) => {
-  runtime2.log(`Reading current regime from StrategyManager`);
-  return null;
+var readPoolBalance = async (runtime2, evmConfig) => {
+  runtime2.log(`Reading pool balance from PoolReserve`);
+  return BigInt(1e5) * BigInt(1000000000000000000);
 };
-var regimeExists = async (runtime2, evmConfig, regimeId) => {
-  runtime2.log(`Checking if regime ${regimeId} exists`);
-  return false;
+var readLatestSolvencyEpoch = async (runtime2, evmConfig) => {
+  runtime2.log(`Reading latest solvency epoch from PoolReserve`);
+  return 0;
 };
-var REGIMES = {
-  1: { regimeId: 1, fortressSpreadBps: 100, maxMultiplier: 100, regimeName: "LOW_VOL" },
-  2: { regimeId: 2, fortressSpreadBps: 150, maxMultiplier: 80, regimeName: "NORMAL" },
-  3: { regimeId: 3, fortressSpreadBps: 300, maxMultiplier: 50, regimeName: "HIGH_VOL" }
-};
-var determineTargetRegime = (volatilityIndex) => {
-  if (volatilityIndex < 0.3) {
-    return REGIMES[1];
-  } else if (volatilityIndex < 0.6) {
-    return REGIMES[2];
-  } else {
-    return REGIMES[3];
+var calculateSolvencyRatio = (poolBalance, totalLiability) => {
+  if (totalLiability === 0n) {
+    return BigInt(Number.MAX_SAFE_INTEGER);
   }
+  return poolBalance * RATIO_PRECISION / totalLiability;
 };
-var isNoOp = async (runtime2, evmConfig, targetRegime) => {
-  const currentRegime = await withRetry(() => readCurrentRegime(runtime2, evmConfig));
-  if (!currentRegime) {
-    return false;
-  }
-  return currentRegime.regimeId === targetRegime.regimeId;
+var formatRatio = (ratio) => {
+  const integerPart = ratio / RATIO_PRECISION;
+  const fractionalPart = ratio % RATIO_PRECISION * 100n / RATIO_PRECISION;
+  return `${integerPart}.${fractionalPart.toString().padStart(2, "0")}x`;
 };
 var onCronTrigger = async (runtime2, payload) => {
   let triggerTimestamp = Math.floor(Date.now() / 1000);
@@ -29334,62 +29312,59 @@ var onCronTrigger = async (runtime2, payload) => {
     triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
   }
   runtime2.log("========================================");
-  runtime2.log("Strategy Rebalance Workflow Started");
+  runtime2.log("Pool Solvency PoR Workflow Started");
   runtime2.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime2.log("========================================");
   try {
     const evmConfig = getEvmConfig(runtime2.config);
-    runtime2.log("Reading current regime from chain...");
-    const currentRegime = await withRetry(() => readCurrentRegime(runtime2, evmConfig));
-    if (currentRegime) {
-      runtime2.log(`Current regime: ${currentRegime.regimeId} (spread: ${currentRegime.fortressSpreadBps} bps, multiplier: ${currentRegime.maxMultiplier}x)`);
-    } else {
-      runtime2.log("No current regime set on-chain");
-    }
+    runtime2.log("Reading pool balance from chain...");
+    const poolBalance = await withRetry(() => readPoolBalance(runtime2, evmConfig));
+    runtime2.log(`Pool balance: ${poolBalance.toString()}`);
     const apiKey = runtime2.secrets?.APP_API_KEY || "mock-key";
     const apiClient = createApiClient(runtime2.config.appApiBaseUrl, apiKey, runtime2.config.appApiBaseUrl.includes("localhost"));
-    runtime2.log("Fetching current strategy regime...");
-    const strategyRegime = await withRetry(() => apiClient.getCurrentStrategyRegime());
-    const volatilityIndex = parseFloat(strategyRegime.volatilityIndex);
-    runtime2.log(`Volatility index: ${volatilityIndex}`);
-    runtime2.log(`Current regime name: ${strategyRegime.regimeName}`);
-    runtime2.log("Determining target regime...");
-    const targetRegime = determineTargetRegime(volatilityIndex);
-    runtime2.log(`Target regime: ${targetRegime.regimeName} (${targetRegime.regimeId})`);
-    runtime2.log(`  Fortress spread: ${targetRegime.fortressSpreadBps} bps`);
-    runtime2.log(`  Max multiplier: ${targetRegime.maxMultiplier}x`);
-    runtime2.log("Checking for no-op update...");
-    const noOp = await isNoOp(runtime2, evmConfig, targetRegime);
-    if (noOp) {
-      runtime2.log("No-op detected: target regime matches current on-chain regime. Skipping.");
-      return `No-op: regime ${targetRegime.regimeName} already active`;
+    runtime2.log("Fetching liability data...");
+    const liabilityData = await withRetry(() => apiClient.getLiabilityData());
+    runtime2.log(`Total liability: ${liabilityData.totalLiability}`);
+    runtime2.log(`Utilization: ${liabilityData.utilizationBps} bps`);
+    runtime2.log(`Max single bet exposure: ${liabilityData.maxSingleBetExposure}`);
+    runtime2.log(`Outstanding bets: ${liabilityData.outstandingBets}`);
+    const totalLiability = BigInt(liabilityData.totalLiability);
+    const maxSingleBetExposure = BigInt(liabilityData.maxSingleBetExposure);
+    runtime2.log("Calculating solvency ratio...");
+    const solvencyRatio = calculateSolvencyRatio(poolBalance, totalLiability);
+    const minRatio = runtime2.config.minSolvencyRatio ? BigInt(runtime2.config.minSolvencyRatio) : MIN_SOLVENCY_RATIO;
+    const isHealthy = solvencyRatio >= minRatio;
+    runtime2.log(`Solvency ratio: ${formatRatio(solvencyRatio)}`);
+    runtime2.log(`Minimum required: ${formatRatio(minRatio)}`);
+    runtime2.log(`Status: ${isHealthy ? "✅ HEALTHY" : "❌ UNDER-COLLATERALIZED"}`);
+    if (!isHealthy) {
+      const alertMessage = `CRITICAL: Pool solvency ratio ${formatRatio(solvencyRatio)} is below minimum ${formatRatio(minRatio)}. Pool balance: ${poolBalance.toString()}, Liability: ${totalLiability.toString()}`;
+      runtime2.log(`⚠️  ${alertMessage}`);
+      await apiClient.sendAlert(alertMessage, "critical");
+      runtime2.log("Reporting under-collateralized state on-chain...");
     }
-    runtime2.log("Checking idempotency...");
-    const exists = await withRetry(() => regimeExists(runtime2, evmConfig, targetRegime.regimeId));
-    if (exists) {
-      runtime2.log(`Regime ${targetRegime.regimeId} already exists on-chain. Skipping.`);
-      return `Skipped: regime ${targetRegime.regimeId} already exists`;
+    const epochId = Math.floor(triggerTimestamp / 86400);
+    runtime2.log(`Epoch ID: ${epochId} (day ${epochId})`);
+    const latestEpoch = await withRetry(() => readLatestSolvencyEpoch(runtime2, evmConfig));
+    if (epochId <= latestEpoch) {
+      runtime2.log(`Epoch ${epochId} already reported (latest: ${latestEpoch}). Skipping.`);
+      return `Epoch ${epochId} already reported`;
     }
-    runtime2.log("Updating volatility regime on-chain...");
-    const txHash = setVolatilityRegime(runtime2, evmConfig, {
-      regimeId: targetRegime.regimeId,
-      fortressSpreadBps: targetRegime.fortressSpreadBps,
-      maxMultiplier: targetRegime.maxMultiplier
-    });
-    runtime2.log("Logging strategy update...");
-    try {
-      await apiClient.logStrategyUpdate(targetRegime.regimeId, targetRegime.fortressSpreadBps, targetRegime.maxMultiplier, txHash);
-      runtime2.log("Strategy update logged");
-    } catch (error48) {
-      const message = error48 instanceof Error ? error48.message : String(error48);
-      runtime2.log(`Warning: Failed to log strategy update: ${message}`);
-    }
+    const reportPayload = {
+      epochId,
+      poolBalance,
+      totalLiability,
+      utilizationBps: liabilityData.utilizationBps,
+      maxSingleBetExposure
+    };
+    runtime2.log("Submitting solvency report on-chain...");
+    const txHash = submitSolvencyReport(runtime2, evmConfig, reportPayload);
     runtime2.log("========================================");
-    runtime2.log("Strategy Rebalance Workflow Completed");
-    runtime2.log(`Regime ${targetRegime.regimeName} (${targetRegime.regimeId}) activated`);
+    runtime2.log("Pool Solvency PoR Workflow Completed");
     runtime2.log(`Transaction: ${txHash}`);
+    runtime2.log(`Status: ${isHealthy ? "HEALTHY" : "UNDER-COLLATERALIZED"}`);
     runtime2.log("========================================");
-    return `Strategy updated to ${targetRegime.regimeName} (regime ${targetRegime.regimeId}). Tx: ${txHash}`;
+    return `Solvency report submitted for epoch ${epochId}. Ratio: ${formatRatio(solvencyRatio)}, Status: ${isHealthy ? "HEALTHY" : "UNDER-COLLATERALIZED"}, Tx: ${txHash}`;
   } catch (error48) {
     const message = error48 instanceof Error ? error48.message : String(error48);
     runtime2.log(`ERROR: ${message}`);
@@ -29397,10 +29372,10 @@ var onCronTrigger = async (runtime2, payload) => {
   }
 };
 var initWorkflow = (config2) => {
-  console.log("Initializing Strategy Rebalance Workflow");
+  console.log("Initializing Pool Solvency PoR Workflow");
   console.log(`API Base URL: ${config2.appApiBaseUrl}`);
   const cronTrigger = new CronCapability().trigger({
-    schedule: "*/15 * * * *"
+    schedule: "0 0 * * *"
   });
   return [handler(cronTrigger, onCronTrigger)];
 };

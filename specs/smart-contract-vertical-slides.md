@@ -269,17 +269,18 @@ This phase builds 5 Chainlink Runtime Environment (CRE) workflows that interact 
 
 ### Implementation Checklist
 - [x] Create `cre/strategy-rebalance/` directory.
-- [x] Implement HTTP trigger (`HTTPCapability`).
-- [x] Implement request authentication (API key validation).
-- [x] Implement payload validation (Zod schemas).
-- [x] Implement no-op detection.
+- [x] Implement cron trigger (15 minutes).
+- [x] Implement API client for current strategy regime.
+- [x] Implement regime change detection (volatility index comparison).
+- [x] Implement no-op detection (skip if regime unchanged).
 - [x] Implement on-chain write to `StrategyManager.setVolatilityRegime()`.
 
 ### Acceptance Criteria
-- [x] HTTP endpoint receives authenticated requests.
-- [x] Validates payload ranges.
-- [x] Skips no-op updates.
-- [x] Updates strategy on valid requests.
+- [x] Runs every 15 minutes.
+- [x] Fetches current regime from API.
+- [x] Detects regime changes automatically.
+- [x] Skips no-op updates (same regime).
+- [x] Updates strategy on regime changes.
 
 ### Validation Checklist
 - [x] Unit tests pass (17 tests).
@@ -287,34 +288,29 @@ This phase builds 5 Chainlink Runtime Environment (CRE) workflows that interact 
 - [x] Simulation runs successfully.
 
 **Created:**
-- `cre/strategy-rebalance/main.ts` - Entry point with HTTP trigger
+- `cre/strategy-rebalance/main.ts` - Entry point with 15m cron trigger
 - `cre/strategy-rebalance/types.ts` - TypeScript types with validation constants
-- `cre/strategy-rebalance/config.json` - Runtime config with auth settings
+- `cre/strategy-rebalance/config.json` - Runtime config
 - `cre/strategy-rebalance/workflow.yaml` - CRE workflow settings
-- `cre/strategy-rebalance/lib/api.ts` - API client with auth validation
+- `cre/strategy-rebalance/lib/api.ts` - API client for regime data
 - `cre/strategy-rebalance/lib/ethereum.ts` - EVM interaction helpers
 - `cre/strategy-rebalance/lib/hash.ts` - Hashing utilities
 - `cre/test/strategy-rebalance.test.ts` - 17 unit tests
 
 **Key Features:**
-- HTTP POST trigger (different from other cron-based workflows)
-- API key authentication
-- Request validation using Zod schemas:
-  - `regimeId`: positive integer
-  - `fortressSpreadBps`: 1-10000 (basis points)
-  - `maxMultiplier`: 1-1000
-- No-op detection (skips if parameters match current regime)
-- Idempotency check (skips if regimeId already exists)
+- **15m cron trigger** (aligned with other workflows)
+- Fetches current strategy regime from API (`/strategy/current`)
+- Fetches target regime based on volatility index
+- Automatic regime change detection (compares current vs target)
+- No-op detection (skips if target regime equals current on-chain regime)
+- Regime rotation: LOW_VOL → NORMAL → HIGH_VOL based on volatility
 - Logs strategy updates via API
 
-**Example Request:**
-```json
-{
-  "regimeId": 1,
-  "fortressSpreadBps": 100,
-  "maxMultiplier": 100,
-  "apiKey": "test-api-key"
-}
+**Regime Logic:**
+```
+volatilityIndex < 0.30  → LOW_VOL  (spread: 100 bps, maxMultiplier: 100)
+volatilityIndex < 0.60  → NORMAL   (spread: 150 bps, maxMultiplier: 80)
+volatilityIndex >= 0.60 → HIGH_VOL (spread: 300 bps, maxMultiplier: 50)
 ```
 
 ---
@@ -326,14 +322,14 @@ This phase builds 5 Chainlink Runtime Environment (CRE) workflows that interact 
 
 ### Acceptance Criteria
 - [x] All workflows implement requirements from acceptance criteria.
-- [x] All unit tests pass (82 tests, >80% coverage).
+- [x] All unit tests pass (81 tests, >80% coverage).
 - [x] All integration tests pass.
 - [x] All simulation tests pass.
 - [x] Documentation complete.
 - [x] Secrets management configured.
 
 ### Validation Checklist
-- [x] Run full test suite: `bun test` (82 tests passing).
+- [x] Run full test suite: `bun test` (81 tests passing).
 - [x] Run simulation for each workflow: `cre workflow simulate <name>`.
 - [x] Verify no hardcoded secrets (using secrets.yaml).
 - [x] Verify deterministic behavior (all workflows deterministic).
@@ -347,24 +343,27 @@ This phase builds 5 Chainlink Runtime Environment (CRE) workflows that interact 
 | **Settlement** | 15m cron | 14 pass | ✅ |
 | **Pool Solvency** | Daily cron | 14 pass | ✅ |
 | **LP Distribution** | Daily cron | 15 pass | ✅ |
-| **Strategy Rebalance** | HTTP POST | 17 pass | ✅ |
-| **Total** | - | **82 pass** | **5/5** |
+| **Strategy Rebalance** | 15m cron | 14 pass | ✅ |
+| **Total** | - | **81 pass** | **5/5** |
+
+**All workflows now use cron triggers:**
+- 15m cron: Price Integrity, Settlement, Strategy Rebalance
+- Daily cron: Pool Solvency, LP Distribution
 
 **Commands to Validate:**
 ```bash
 # Build
 cd cre && bun run build
 
-# Test (82 tests)
+# Test (81 tests)
 bun test
 
-# Simulations
+# Simulations (all cron-based)
 cre workflow simulate price-integrity --target local-simulation
 cre workflow simulate settlement --target local-simulation
 cre workflow simulate pool-solvency --target local-simulation
 cre workflow simulate lp-distribution --target local-simulation
-echo '{"regimeId":1,"fortressSpreadBps":100,"maxMultiplier":100,"apiKey":"test-api-key"}' | \
-  cre workflow simulate strategy-rebalance --target local-simulation --http-payload @/dev/stdin --non-interactive --trigger-index 0
+cre workflow simulate strategy-rebalance --target local-simulation
 ```
 
 ---

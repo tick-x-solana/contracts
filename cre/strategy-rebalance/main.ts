@@ -1,52 +1,60 @@
 // ==========================================================================
-// Workflow 5: Strategy Rebalance (HTTP Trigger)
+// Workflow 5: Strategy Rebalance (15m Cron Trigger)
 // ==========================================================================
 //
 // This workflow:
-// 1. Triggers via HTTP POST request
-// 2. Authenticates request using API key
-// 3. Validates payload (regimeId, fortressSpreadBps, maxMultiplier)
-// 4. Checks for no-op (same as current regime)
-// 5. Checks idempotency (regimeId already exists)
-// 6. Updates strategy on-chain via StrategyManager.setVolatilityRegime()
-// 7. Logs update via API
+// 1. Triggers every 15 minutes via cron
+// 2. Fetches current on-chain regime from StrategyManager
+// 3. Fetches current volatility data from API
+// 4. Determines target regime based on volatility index
+// 5. Detects regime changes (current vs target)
+// 6. No-op if target equals current
+// 7. Updates strategy on-chain via StrategyManager.setVolatilityRegime()
+// 8. Logs update via API
 //
-// Trigger: HTTP POST
+// Trigger: cron (*/15 * * * *)
 // Contract: StrategyManager.setVolatilityRegime(...)
 
 import {
-  HTTPCapability,
+  CronCapability,
   handler,
   type Runtime,
-  type HTTPPayload,
+  type CronPayload,
   Runner,
 } from "@chainlink/cre-sdk";
-import { type Config, type EvmConfig, type StrategyUpdateRequest, type StrategyUpdateResult, getEvmConfig, strategyUpdateRequestSchema } from "./types";
+import { type Config, type EvmConfig, type VolatilityRegime, getEvmConfig } from "./types";
 import { createApiClient } from "./lib/api";
 import { setVolatilityRegime, readCurrentRegime, regimeExists, withRetry } from "./lib/ethereum";
 
 // ========================================
-// Request Validation
+// Regime Configuration
 // ========================================
 
-const validateRequest = (data: unknown): StrategyUpdateRequest => {
-  const result = strategyUpdateRequestSchema.safeParse(data);
-  if (!result.success) {
-    const errors = result.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
-    throw new Error(`Validation failed: ${errors}`);
-  }
-  return result.data;
+interface RegimeConfig {
+  regimeId: number;
+  fortressSpreadBps: number;
+  maxMultiplier: number;
+  regimeName: string;
+}
+
+// Regime thresholds and parameters
+const REGIMES: Record<number, RegimeConfig> = {
+  1: { regimeId: 1, fortressSpreadBps: 100, maxMultiplier: 100, regimeName: "LOW_VOL" },
+  2: { regimeId: 2, fortressSpreadBps: 150, maxMultiplier: 80, regimeName: "NORMAL" },
+  3: { regimeId: 3, fortressSpreadBps: 300, maxMultiplier: 50, regimeName: "HIGH_VOL" },
 };
 
-// ========================================
-// Authentication
-// ========================================
-
-const authenticate = async (
-  apiClient: ReturnType<typeof createApiClient>,
-  apiKey: string
-): Promise<boolean> => {
-  return apiClient.validateApiKey(apiKey);
+/**
+ * Determine target regime based on volatility index
+ */
+const determineTargetRegime = (volatilityIndex: number): RegimeConfig => {
+  if (volatilityIndex < 0.30) {
+    return REGIMES[1]; // LOW_VOL
+  } else if (volatilityIndex < 0.60) {
+    return REGIMES[2]; // NORMAL
+  } else {
+    return REGIMES[3]; // HIGH_VOL
+  }
 };
 
 // ========================================
@@ -56,7 +64,7 @@ const authenticate = async (
 const isNoOp = async (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig,
-  request: StrategyUpdateRequest
+  targetRegime: RegimeConfig
 ): Promise<boolean> => {
   const currentRegime = await withRetry(() => readCurrentRegime(runtime, evmConfig));
   
@@ -64,101 +72,95 @@ const isNoOp = async (
     return false; // No current regime, not a no-op
   }
   
-  // Check if parameters are the same
-  return (
-    currentRegime.fortressSpreadBps === request.fortressSpreadBps &&
-    currentRegime.maxMultiplier === request.maxMultiplier
-  );
+  // Check if regime ID is the same
+  return currentRegime.regimeId === targetRegime.regimeId;
 };
 
 // ========================================
-// HTTP Trigger Handler
+// Cron Trigger Handler
 // ========================================
 
-const onHttpTrigger = async (
+const onCronTrigger = async (
   runtime: Runtime<Config>,
-  payload: HTTPPayload
+  payload: CronPayload
 ): Promise<string> => {
-  const triggerTime = new Date().toISOString();
+  // Extract timestamp
+  let triggerTimestamp = Math.floor(Date.now() / 1000);
+  if (payload.scheduledExecutionTime?.seconds) {
+    triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
+  }
 
   runtime.log("========================================");
   runtime.log("Strategy Rebalance Workflow Started");
-  runtime.log(`Trigger time: ${triggerTime}`);
+  runtime.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime.log("========================================");
 
   try {
     // ========================================
-    // Step 1: Parse HTTP Payload
+    // Step 1: Read Current On-Chain Regime
     // ========================================
 
-    let requestData: unknown;
-    try {
-      // Parse input from bytes
-      const inputString = new TextDecoder().decode(payload.input);
-      requestData = JSON.parse(inputString);
-      runtime.log(`Received request: ${inputString}`);
-    } catch (error) {
-      throw new Error("Invalid JSON in request body");
+    const evmConfig = getEvmConfig(runtime.config);
+    
+    runtime.log("Reading current regime from chain...");
+    const currentRegime = await withRetry(() => readCurrentRegime(runtime, evmConfig));
+    
+    if (currentRegime) {
+      runtime.log(`Current regime: ${currentRegime.regimeId} (spread: ${currentRegime.fortressSpreadBps} bps, multiplier: ${currentRegime.maxMultiplier}x)`);
+    } else {
+      runtime.log("No current regime set on-chain");
     }
 
     // ========================================
-    // Step 2: Validate Request
+    // Step 2: Fetch Volatility Data from API
     // ========================================
 
-    runtime.log("Validating request...");
-    const request = validateRequest(requestData);
-    runtime.log(`Request validated: regimeId=${request.regimeId}, spread=${request.fortressSpreadBps}, multiplier=${request.maxMultiplier}`);
-
-    // ========================================
-    // Step 3: Authenticate
-    // ========================================
-
-    const apiKey = request.apiKey;
+    const apiKey = (runtime as any).secrets?.APP_API_KEY || "mock-key";
     const apiClient = createApiClient(
       runtime.config.appApiBaseUrl,
       apiKey,
       runtime.config.appApiBaseUrl.includes("localhost")
     );
 
-    runtime.log("Authenticating request...");
-    const isAuthenticated = await authenticate(apiClient, apiKey);
-    if (!isAuthenticated) {
-      throw new Error("Authentication failed: invalid API key");
-    }
-    runtime.log("Authentication successful");
-
-    // ========================================
-    // Step 4: Check Idempotency
-    // ========================================
-
-    const evmConfig = getEvmConfig(runtime.config);
+    runtime.log("Fetching current strategy regime...");
+    const strategyRegime = await withRetry(() => apiClient.getCurrentStrategyRegime());
     
-    runtime.log("Checking idempotency...");
-    const exists = await withRetry(() => regimeExists(runtime, evmConfig, request.regimeId));
-    if (exists) {
-      runtime.log(`Regime ${request.regimeId} already exists. Skipping.`);
-      const result: StrategyUpdateResult = {
-        success: true,
-        regimeId: request.regimeId,
-        isNoOp: true,
-      };
-      return JSON.stringify(result);
-    }
+    const volatilityIndex = parseFloat(strategyRegime.volatilityIndex);
+    runtime.log(`Volatility index: ${volatilityIndex}`);
+    runtime.log(`Current regime name: ${strategyRegime.regimeName}`);
 
     // ========================================
-    // Step 5: No-Op Detection
+    // Step 3: Determine Target Regime
+    // ========================================
+
+    runtime.log("Determining target regime...");
+    const targetRegime = determineTargetRegime(volatilityIndex);
+    
+    runtime.log(`Target regime: ${targetRegime.regimeName} (${targetRegime.regimeId})`);
+    runtime.log(`  Fortress spread: ${targetRegime.fortressSpreadBps} bps`);
+    runtime.log(`  Max multiplier: ${targetRegime.maxMultiplier}x`);
+
+    // ========================================
+    // Step 4: No-Op Detection
     // ========================================
 
     runtime.log("Checking for no-op update...");
-    const noOp = await isNoOp(runtime, evmConfig, request);
+    const noOp = await isNoOp(runtime, evmConfig, targetRegime);
+    
     if (noOp) {
-      runtime.log("No-op detected: parameters match current regime. Skipping.");
-      const result: StrategyUpdateResult = {
-        success: true,
-        regimeId: request.regimeId,
-        isNoOp: true,
-      };
-      return JSON.stringify(result);
+      runtime.log("No-op detected: target regime matches current on-chain regime. Skipping.");
+      return `No-op: regime ${targetRegime.regimeName} already active`;
+    }
+
+    // ========================================
+    // Step 5: Check Idempotency
+    // ========================================
+
+    runtime.log("Checking idempotency...");
+    const exists = await withRetry(() => regimeExists(runtime, evmConfig, targetRegime.regimeId));
+    if (exists) {
+      runtime.log(`Regime ${targetRegime.regimeId} already exists on-chain. Skipping.`);
+      return `Skipped: regime ${targetRegime.regimeId} already exists`;
     }
 
     // ========================================
@@ -167,9 +169,9 @@ const onHttpTrigger = async (
 
     runtime.log("Updating volatility regime on-chain...");
     const txHash = setVolatilityRegime(runtime, evmConfig, {
-      regimeId: request.regimeId,
-      fortressSpreadBps: request.fortressSpreadBps,
-      maxMultiplier: request.maxMultiplier,
+      regimeId: targetRegime.regimeId,
+      fortressSpreadBps: targetRegime.fortressSpreadBps,
+      maxMultiplier: targetRegime.maxMultiplier,
     });
 
     // ========================================
@@ -179,9 +181,9 @@ const onHttpTrigger = async (
     runtime.log("Logging strategy update...");
     try {
       await apiClient.logStrategyUpdate(
-        request.regimeId,
-        request.fortressSpreadBps,
-        request.maxMultiplier,
+        targetRegime.regimeId,
+        targetRegime.fortressSpreadBps,
+        targetRegime.maxMultiplier,
         txHash
       );
       runtime.log("Strategy update logged");
@@ -195,33 +197,18 @@ const onHttpTrigger = async (
     // Step 8: Return Result
     // ========================================
 
-    const result: StrategyUpdateResult = {
-      success: true,
-      regimeId: request.regimeId,
-      txHash,
-      isNoOp: false,
-    };
-
     runtime.log("========================================");
     runtime.log("Strategy Rebalance Workflow Completed");
-    runtime.log(`Regime ${request.regimeId} updated`);
+    runtime.log(`Regime ${targetRegime.regimeName} (${targetRegime.regimeId}) activated`);
     runtime.log(`Transaction: ${txHash}`);
     runtime.log("========================================");
 
-    return JSON.stringify(result);
+    return `Strategy updated to ${targetRegime.regimeName} (regime ${targetRegime.regimeId}). Tx: ${txHash}`;
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     runtime.log(`ERROR: ${message}`);
-    
-    const result: StrategyUpdateResult = {
-      success: false,
-      regimeId: 0,
-      error: message,
-      isNoOp: false,
-    };
-    
-    return JSON.stringify(result);
+    throw error;
   }
 };
 
@@ -233,15 +220,12 @@ const initWorkflow = (config: Config) => {
   console.log("Initializing Strategy Rebalance Workflow");
   console.log(`API Base URL: ${config.appApiBaseUrl}`);
 
-  // HTTP trigger - listens for POST requests
-  const httpCapability = new HTTPCapability();
-  const httpTrigger = httpCapability.trigger({
-    // For local simulation, no authorized keys required
-    // In production, add public keys for request validation
-    authorizedKeys: [],
+  // Cron trigger - every 15 minutes (aligned with other workflows)
+  const cronTrigger = new CronCapability().trigger({
+    schedule: "*/15 * * * *",
   });
 
-  return [handler(httpTrigger, onHttpTrigger)];
+  return [handler(cronTrigger, onCronTrigger)];
 };
 
 // ========================================

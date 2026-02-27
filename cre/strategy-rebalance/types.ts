@@ -18,23 +18,12 @@ export const evmConfigSchema = z.object({
 export type EvmConfig = z.infer<typeof evmConfigSchema>;
 
 // ========================================
-// Auth Configuration
-// ========================================
-
-export const authConfigSchema = z.object({
-  apiKeyHeader: z.string(),
-});
-
-export type AuthConfig = z.infer<typeof authConfigSchema>;
-
-// ========================================
 // Main Config
 // ========================================
 
 export const configSchema = z.object({
   appApiBaseUrl: z.string().url(),
   evms: z.array(evmConfigSchema),
-  auth: authConfigSchema,
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -64,31 +53,6 @@ export const volatilityRegimeSchema = z.object({
 });
 
 export type VolatilityRegime = z.infer<typeof volatilityRegimeSchema>;
-
-// ========================================
-// HTTP Request Payload
-// ========================================
-
-export const strategyUpdateRequestSchema = z.object({
-  regimeId: z.number().int().positive(),
-  fortressSpreadBps: z.number().int().positive().max(10000),
-  maxMultiplier: z.number().int().positive().max(1000),
-  apiKey: z.string().min(1),
-});
-
-export type StrategyUpdateRequest = z.infer<typeof strategyUpdateRequestSchema>;
-
-// ========================================
-// Response Types
-// ========================================
-
-export interface StrategyUpdateResult {
-  success: boolean;
-  regimeId: number;
-  txHash?: string;
-  error?: string;
-  isNoOp: boolean;
-}
 
 // ========================================
 // Validation Constants

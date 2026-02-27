@@ -2,12 +2,14 @@
 // Strategy Rebalance API Client
 // ==========================================================================
 
+import type { VolatilityRegime } from "../types";
+
 // ========================================
 // API Client Interface
 // ========================================
 
 export interface StrategyApiClient {
-  validateApiKey(apiKey: string): Promise<boolean>;
+  getCurrentStrategyRegime(): Promise<VolatilityRegime>;
   logStrategyUpdate(regimeId: number, fortressSpreadBps: number, maxMultiplier: number, txHash: string): Promise<void>;
 }
 
@@ -43,16 +45,8 @@ export class RealStrategyApiClient implements StrategyApiClient {
     return response.json() as Promise<T>;
   }
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      const result = await this.fetch<{ valid: boolean }>(`/auth/validate`, {
-        method: "POST",
-        body: JSON.stringify({ apiKey }),
-      });
-      return result.valid;
-    } catch {
-      return false;
-    }
+  async getCurrentStrategyRegime(): Promise<VolatilityRegime> {
+    return this.fetch<VolatilityRegime>(`/strategy/current`);
   }
 
   async logStrategyUpdate(
@@ -79,10 +73,43 @@ export class RealStrategyApiClient implements StrategyApiClient {
 // ========================================
 
 export class MockStrategyApiClient implements StrategyApiClient {
-  private validApiKeys = new Set(["test-api-key", "admin-key", "strategist-key"]);
+  private seededRandom(seed: number): number {
+    const x = Math.sin(seed * 9999) * 10000;
+    return x - Math.floor(x);
+  }
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    return this.validApiKeys.has(apiKey);
+  async getCurrentStrategyRegime(): Promise<VolatilityRegime> {
+    const seed = Math.floor(Date.now() / 3600000); // Hourly rotation
+    const regimeId = Math.floor(this.seededRandom(seed) * 3) + 1;
+    
+    const regimes: Record<number, VolatilityRegime> = {
+      1: {
+        regimeId: 1,
+        fortressSpreadBps: 100,
+        maxMultiplier: 100,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.25",
+        regimeName: "LOW_VOL",
+      },
+      2: {
+        regimeId: 2,
+        fortressSpreadBps: 150,
+        maxMultiplier: 80,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.45",
+        regimeName: "NORMAL",
+      },
+      3: {
+        regimeId: 3,
+        fortressSpreadBps: 300,
+        maxMultiplier: 50,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.75",
+        regimeName: "HIGH_VOL",
+      },
+    };
+
+    return regimes[regimeId];
   }
 
   async logStrategyUpdate(
