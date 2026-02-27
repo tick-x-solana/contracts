@@ -23,6 +23,7 @@ import {
     InsufficientBalance,
     SolvencyRatioTooLow
 } from "../src/Errors.sol";
+import {IReceiver} from "../src/interfaces/IReceiver.sol";
 
 contract MockERC20 is IERC20 {
     string public name = "Mock USDT";
@@ -94,7 +95,7 @@ contract PoolReserveTest is Test {
         roles = new Roles(owner, reporter, settler, address(0), distributor);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset));
+        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
         
         // Mint tokens to test addresses
         asset.mint(lp1, INITIAL_MINT);
@@ -115,12 +116,12 @@ contract PoolReserveTest is Test {
 
     function test_ConstructorRevertsOnZeroRoles() public {
         vm.expectRevert(ZeroAddress.selector);
-        new PoolReserve(address(0), address(asset));
+        new PoolReserve(address(0), address(asset), address(0x999));
     }
 
     function test_ConstructorRevertsOnZeroAsset() public {
         vm.expectRevert(ZeroAddress.selector);
-        new PoolReserve(address(roles), address(0));
+        new PoolReserve(address(roles), address(0), address(0x999));
     }
 
     // ==================== LP Deposit Tests ====================
@@ -593,5 +594,102 @@ contract PoolReserveTest is Test {
 
         assertEq(poolReserve.lpSharesOf(lp1), depositAmount);
         assertEq(poolReserve.totalLPShares(), depositAmount);
+    }
+
+    // ==================== IReceiver / onReport Tests ====================
+
+    function test_OnReport_Success() public {
+        // Setup - LP deposits
+        vm.startPrank(lp1);
+        asset.approve(address(poolReserve), 100_000e18);
+        poolReserve.depositLP(100_000e18);
+        vm.stopPrank();
+
+        // Encode report
+        bytes memory report = abi.encode(
+            uint256(1), // epochId
+            uint256(100_000e18), // poolBalance
+            uint256(0), // totalLiability
+            uint256(0), // utilizationBps
+            uint256(10_000e18) // maxSingleBetExposure
+        );
+
+        // Call onReport as forwarder
+        vm.prank(address(0x999));
+        vm.expectEmit(true, false, false, true);
+        emit SolvencyReported(
+            uint256(1),
+            uint256(100_000e18),
+            uint256(0),
+            uint256(0),
+            uint256(10_000e18)
+        );
+        poolReserve.onReport("", report);
+
+        // Verify report was stored
+        assertEq(poolReserve.latestSolvencyEpochId(), 1);
+    }
+
+    function test_OnReport_RevertInvalidSender() public {
+        bytes memory report = abi.encode(
+            uint256(1),
+            uint256(100_000e18),
+            uint256(0),
+            uint256(0),
+            uint256(10_000e18)
+        );
+
+        // Call onReport as non-forwarder should revert
+        vm.prank(lp1);
+        vm.expectRevert(abi.encodeWithSelector(
+            bytes4(keccak256("InvalidSender(address,address)")),
+            lp1,
+            address(0x999)
+        ));
+        poolReserve.onReport("", report);
+    }
+
+    function test_OnReport_MultipleEpochs() public {
+        // Setup
+        vm.startPrank(lp1);
+        asset.approve(address(poolReserve), 200_000e18);
+        poolReserve.depositLP(200_000e18);
+        vm.stopPrank();
+
+        // Epoch 1
+        vm.prank(address(0x999));
+        poolReserve.onReport("", abi.encode(
+            uint256(1),
+            uint256(100_000e18),
+            uint256(0),
+            uint256(0),
+            uint256(10_000e18)
+        ));
+
+        // Epoch 2
+        vm.prank(address(0x999));
+        poolReserve.onReport("", abi.encode(
+            uint256(2),
+            uint256(150_000e18),
+            uint256(10_000e18),
+            uint256(666), // utilization
+            uint256(10_000e18)
+        ));
+
+        assertEq(poolReserve.latestSolvencyEpochId(), 2);
+    }
+
+    function test_SupportsInterface() public view {
+        // IReceiver interface ID
+        bytes4 receiverInterface = type(IReceiver).interfaceId;
+        assertTrue(poolReserve.supportsInterface(receiverInterface));
+
+        // ERC165 interface ID
+        bytes4 erc165Interface = 0x01ffc9a7;
+        assertTrue(poolReserve.supportsInterface(erc165Interface));
+    }
+
+    function test_ForwarderAddressGetter() public view {
+        assertEq(poolReserve.getForwarderAddress(), address(0x999));
     }
 }

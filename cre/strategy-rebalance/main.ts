@@ -14,6 +14,9 @@
 //
 // Trigger: cron (*/15 * * * *)
 // Contract: StrategyManager.setVolatilityRegime(...)
+//
+// REAL CONTRACT: 0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660 (Sepolia)
+// To use real contract: cre workflow simulate strategy-rebalance --target sepolia-real --broadcast
 
 import {
   CronCapability,

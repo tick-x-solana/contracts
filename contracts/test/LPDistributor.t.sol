@@ -7,6 +7,7 @@ import {PoolReserve} from "../src/PoolReserve.sol";
 import {Roles} from "../src/Roles.sol";
 import {MockERC20} from "./PoolReserve.t.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
+import {IReceiver} from "../src/interfaces/IReceiver.sol";
 import {CCIPDistributionRequested, ReserveAllocatedToDistributor} from "../src/Events.sol";
 
 contract LPDistributorTest is Test {
@@ -36,10 +37,10 @@ contract LPDistributorTest is Test {
         roles = new Roles(owner, reporter, settler, address(0), owner);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset));
+        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
         
         // Deploy LPDistributor
-        lpDistributor = new LPDistributor(address(roles), address(poolReserve));
+        lpDistributor = new LPDistributor(address(roles), address(poolReserve), address(0x999));
         
         // Set LPDistributor as the distributor in Roles
         vm.prank(owner);
@@ -60,12 +61,12 @@ contract LPDistributorTest is Test {
 
     function test_ConstructorRevertsOnZeroRoles() public {
         vm.expectRevert(ZeroAddress.selector);
-        new LPDistributor(address(0), address(poolReserve));
+        new LPDistributor(address(0), address(poolReserve), address(0x999));
     }
 
     function test_ConstructorRevertsOnZeroPoolReserve() public {
         vm.expectRevert(ZeroAddress.selector);
-        new LPDistributor(address(roles), address(0));
+        new LPDistributor(address(roles), address(0), address(0x999));
     }
 
     // ==================== Queue Distribution Tests ====================
@@ -216,5 +217,77 @@ contract LPDistributorTest is Test {
 
         assertTrue(lpDistributor.requestExists(1));
         assertFalse(lpDistributor.requestExists(2));
+    }
+
+    // ==================== IReceiver / onReport Tests ====================
+
+    function test_OnReport_Success() public {
+        // Setup - LP deposits
+        vm.startPrank(lp1);
+        asset.approve(address(poolReserve), 100_000e18);
+        poolReserve.depositLP(100_000e18);
+        vm.stopPrank();
+
+        uint256 epochId = 1;
+        uint256 amount = 1000e18;
+
+        // Call onReport as forwarder
+        vm.prank(address(0x999));
+        vm.expectEmit(true, false, false, true);
+        emit CCIPDistributionRequested(epochId, amount, DST_CHAIN_SELECTOR, receiver);
+        
+        lpDistributor.onReport("", abi.encode(epochId, amount, DST_CHAIN_SELECTOR, receiver));
+
+        // Verify request was stored
+        assertEq(lpDistributor.latestEpochId(), epochId);
+        assertTrue(lpDistributor.requestExists(epochId));
+        
+        LPDistributor.DistributionRequest memory req = lpDistributor.getRequest(epochId);
+        assertEq(req.amount, amount);
+        assertEq(req.receiver, receiver);
+    }
+
+    function test_OnReport_RevertInvalidSender() public {
+        // Call onReport as non-forwarder should revert
+        vm.prank(randomUser);
+        vm.expectRevert(abi.encodeWithSelector(
+            bytes4(keccak256("InvalidSender(address,address)")),
+            randomUser,
+            address(0x999)
+        ));
+        lpDistributor.onReport("", abi.encode(1, 1000e18, DST_CHAIN_SELECTOR, receiver));
+    }
+
+    function test_OnReport_MultipleEpochs() public {
+        // Setup
+        vm.startPrank(lp1);
+        asset.approve(address(poolReserve), 200_000e18);
+        poolReserve.depositLP(200_000e18);
+        vm.stopPrank();
+
+        // Epoch 1 via onReport
+        vm.prank(address(0x999));
+        lpDistributor.onReport("", abi.encode(1, 1000e18, DST_CHAIN_SELECTOR, receiver));
+
+        // Epoch 2 via onReport
+        vm.prank(address(0x999));
+        lpDistributor.onReport("", abi.encode(2, 2000e18, DST_CHAIN_SELECTOR, address(101)));
+
+        assertEq(lpDistributor.latestEpochId(), 2);
+        assertEq(lpDistributor.requestCount(), 2);
+    }
+
+    function test_SupportsInterface() public view {
+        // IReceiver interface ID
+        bytes4 receiverInterface = type(IReceiver).interfaceId;
+        assertTrue(lpDistributor.supportsInterface(receiverInterface));
+
+        // ERC165 interface ID
+        bytes4 erc165Interface = 0x01ffc9a7;
+        assertTrue(lpDistributor.supportsInterface(erc165Interface));
+    }
+
+    function test_ForwarderAddressGetter() public view {
+        assertEq(lpDistributor.getForwarderAddress(), address(0x999));
     }
 }

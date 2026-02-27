@@ -15685,6 +15685,27 @@ class Runner {
     });
   }
 }
+var getEvmConfig = (config, chainSelectorName) => {
+  if (chainSelectorName) {
+    const evm = config.evms.find((e) => e.chainSelectorName === chainSelectorName);
+    if (!evm) {
+      throw new Error(`EVM config not found for chain: ${chainSelectorName}`);
+    }
+    return evm;
+  }
+  return config.evms[0];
+};
+var priceIntegrityConfig = {
+  minScoreBps: 9000,
+  maxOhlcP95Bps: 50,
+  weightAccuracy: 5000,
+  weightP95: 2000,
+  weightMax: 1000,
+  weightDirection: 1000,
+  weightOutliers: 1000,
+  outlierThresholdBps: 50,
+  cronCadence: "*/15 * * * *"
+};
 var exports_external2 = {};
 __export(exports_external2, {
   xor: () => xor,
@@ -29126,39 +29147,93 @@ function date4(params) {
 }
 config(en_default2());
 var evmConfigSchema = exports_external2.object({
-  chainSelectorName: exports_external2.string(),
-  chainId: exports_external2.number(),
-  lpDistributorAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  gasLimit: exports_external2.string().optional()
+  chainSelectorName: exports_external2.string().min(1),
+  chainId: exports_external2.number().positive(),
+  priceIntegrityAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  settlementAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  poolReserveAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  lpDistributorAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  strategyManagerAddress: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  gasLimit: exports_external2.string().regex(/^\d+$/).refine((val) => Number(val) > 0)
 });
 var configSchema = exports_external2.object({
   appApiBaseUrl: exports_external2.string().url(),
-  evms: exports_external2.array(evmConfigSchema)
+  evms: exports_external2.array(evmConfigSchema).min(1)
 });
-var getEvmConfig = (config2) => {
-  if (config2.evms.length === 0) {
-    throw new Error("No EVM configuration found");
-  }
-  return config2.evms[0];
-};
+var candleSchema = exports_external2.object({
+  timestamp: exports_external2.number().int().positive(),
+  open: exports_external2.string().regex(/^\d+(\.\d+)?$/),
+  high: exports_external2.string().regex(/^\d+(\.\d+)?$/),
+  low: exports_external2.string().regex(/^\d+(\.\d+)?$/),
+  close: exports_external2.string().regex(/^\d+(\.\d+)?$/)
+});
+var ohlcResponseSchema = exports_external2.object({
+  windowStart: exports_external2.number().int().positive(),
+  windowEnd: exports_external2.number().int().positive(),
+  candles: exports_external2.array(candleSchema),
+  count: exports_external2.number().int().nonnegative(),
+  hash: exports_external2.string().regex(/^0x[a-fA-F0-9]{64}$/i)
+});
+var depositSchema = exports_external2.object({
+  account: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  amount: exports_external2.string().regex(/^\d+$/)
+});
+var withdrawalSchema = exports_external2.object({
+  account: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  amount: exports_external2.string().regex(/^\d+$/)
+});
+var settlementSchema = exports_external2.object({
+  account: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  betId: exports_external2.string(),
+  outcome: exports_external2.enum(["WIN", "LOSE"]),
+  payout: exports_external2.string().regex(/^\d+$/),
+  originalStake: exports_external2.string().regex(/^\d+$/)
+});
+var settlementBatchSchema = exports_external2.object({
+  batchId: exports_external2.string(),
+  windowStart: exports_external2.number().int().positive(),
+  windowEnd: exports_external2.number().int().positive(),
+  deposits: exports_external2.array(depositSchema),
+  withdrawals: exports_external2.array(withdrawalSchema),
+  settlements: exports_external2.array(settlementSchema)
+});
+var liabilityResponseSchema = exports_external2.object({
+  timestamp: exports_external2.number().int().positive(),
+  totalLiability: exports_external2.string().regex(/^\d+$/),
+  utilizationBps: exports_external2.number().int().min(0).max(1e4),
+  maxSingleBetExposure: exports_external2.string().regex(/^\d+$/),
+  outstandingBets: exports_external2.number().int().nonnegative()
+});
 var lpShareSchema = exports_external2.object({
-  lp: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  shares: exports_external2.string()
+  lp: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  shares: exports_external2.string().regex(/^\d+$/)
 });
 var distributionDestinationSchema = exports_external2.object({
   chainSelector: exports_external2.number().int().positive(),
-  receiver: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  amount: exports_external2.string()
+  receiver: exports_external2.string().regex(/^0x[a-fA-F0-9]{40}$/i),
+  amount: exports_external2.string().regex(/^\d+$/)
 });
 var distributionBatchSchema = exports_external2.object({
   epochId: exports_external2.number().int().positive(),
-  totalRewards: exports_external2.string(),
+  totalRewards: exports_external2.string().regex(/^\d+$/),
   snapshotBlock: exports_external2.number().int().positive(),
   lpShares: exports_external2.array(lpShareSchema),
   destinations: exports_external2.array(distributionDestinationSchema)
 });
+var strategyRegimeSchema = exports_external2.object({
+  regimeId: exports_external2.number().int().positive(),
+  fortressSpreadBps: exports_external2.number().int().positive(),
+  maxMultiplier: exports_external2.number().int().positive(),
+  effectiveTs: exports_external2.number().int().positive(),
+  volatilityIndex: exports_external2.string(),
+  regimeName: exports_external2.string()
+});
+init_exports();
+init_encodeAbiParameters();
+init_toHex();
+init_keccak256();
 
-class RealLpDistributionApiClient {
+class RealAppApiClient {
   baseUrl;
   apiKey;
   constructor(baseUrl, apiKey) {
@@ -29181,31 +29256,136 @@ class RealLpDistributionApiClient {
     }
     return response.json();
   }
+  async getOhlcCandles(windowStart, windowEnd, source) {
+    const data = await this.fetch(`/ohlc?windowStart=${windowStart}&windowEnd=${windowEnd}&source=${source}`);
+    return ohlcResponseSchema.parse(data);
+  }
+  async getPendingSettlementBatches(windowStart, windowEnd) {
+    const data = await this.fetch(`/settlement/batches/pending?windowStart=${windowStart}&windowEnd=${windowEnd}`);
+    return data.batches.map((b) => settlementBatchSchema.parse(b));
+  }
+  async markBatchCommitted(batchId, txHash, merkleRoot) {
+    await this.fetch(`/settlement/batches/${batchId}/committed`, {
+      method: "POST",
+      body: JSON.stringify({ txHash, merkleRoot, committedAt: Math.floor(Date.now() / 1000) })
+    });
+  }
+  async getLiabilityData() {
+    const data = await this.fetch(`/risk/liability`);
+    return liabilityResponseSchema.parse(data);
+  }
   async getPendingDistributionBatches() {
     const data = await this.fetch(`/distribution/batches/pending`);
-    return data.batches;
+    return data.batches.map((b) => distributionBatchSchema.parse(b));
   }
-  async markBatchDistributed(batchId, results) {
-    await this.fetch(`/distribution/batches/${batchId}/distributed`, {
-      method: "POST",
-      body: JSON.stringify({
-        results,
-        distributedAt: Math.floor(Date.now() / 1000)
-      })
-    });
+  async getCurrentStrategyRegime() {
+    const data = await this.fetch(`/strategy/current`);
+    return strategyRegimeSchema.parse(data);
   }
 }
 
-class MockLpDistributionApiClient {
+class MockAppApiClient {
+  matchRate = 1;
+  winRate = 0.7;
   seededRandom(seed) {
     const x = Math.sin(seed * 9999) * 1e4;
     return x - Math.floor(x);
+  }
+  generateCandles(windowStart, count, basePrice) {
+    const candles = [];
+    let currentPrice = basePrice;
+    for (let i2 = 0;i2 < count; i2++) {
+      const timestamp = windowStart + i2;
+      const seed = timestamp;
+      const volatility = 0.001;
+      const change = (this.seededRandom(seed) - 0.5) * 2 * volatility;
+      const open = currentPrice;
+      const close = currentPrice * (1 + change);
+      const high = Math.max(open, close) * (1 + Math.abs(this.seededRandom(seed + 1)) * volatility * 0.5);
+      const low = Math.min(open, close) * (1 - Math.abs(this.seededRandom(seed + 2)) * volatility * 0.5);
+      candles.push({
+        timestamp,
+        open: open.toFixed(2),
+        high: high.toFixed(2),
+        low: low.toFixed(2),
+        close: close.toFixed(2)
+      });
+      currentPrice = close;
+    }
+    return candles;
+  }
+  async getOhlcCandles(windowStart, windowEnd, source) {
+    const count = windowEnd - windowStart;
+    const basePrice = 96240.5;
+    const internalCandles = this.generateCandles(windowStart, count, basePrice);
+    const chainlinkCandles = internalCandles.map((c) => {
+      if (this.matchRate >= 1)
+        return c;
+      const deviation = (1 - this.matchRate) * 0.01;
+      const seed = parseInt(c.timestamp.toString()) + source.length;
+      const factor = 1 + (this.seededRandom(seed) - 0.5) * 2 * deviation;
+      return {
+        timestamp: c.timestamp,
+        open: (parseFloat(c.open) * factor).toFixed(2),
+        high: (parseFloat(c.high) * factor).toFixed(2),
+        low: (parseFloat(c.low) * factor).toFixed(2),
+        close: (parseFloat(c.close) * factor).toFixed(2)
+      };
+    });
+    const candles = source === "internal" ? internalCandles : chainlinkCandles;
+    const hash2 = keccak256(toHex(JSON.stringify(candles)));
+    return {
+      windowStart,
+      windowEnd,
+      candles,
+      count,
+      hash: hash2
+    };
+  }
+  async getPendingSettlementBatches(windowStart, windowEnd) {
+    const seed = windowStart;
+    const batchCount = Math.floor(this.seededRandom(seed) * 3) + 1;
+    return Array.from({ length: batchCount }, (_, i2) => {
+      const batchSeed = seed + i2;
+      const account = `0x${Array.from({ length: 40 }, (_2, j) => Math.floor(this.seededRandom(batchSeed + j) * 16).toString(16)).join("")}`;
+      return {
+        batchId: `batch_${windowStart}_${i2}`,
+        windowStart,
+        windowEnd,
+        deposits: [
+          { account, amount: "1000000000000000000" }
+        ],
+        withdrawals: [],
+        settlements: [
+          {
+            account,
+            betId: `bet_${batchSeed}`,
+            outcome: this.seededRandom(batchSeed + 100) < this.winRate ? "WIN" : "LOSE",
+            payout: "2000000000000000000",
+            originalStake: "1000000000000000000"
+          }
+        ]
+      };
+    });
+  }
+  async markBatchCommitted(batchId, txHash, merkleRoot) {
+    console.log(`[Mock] Batch ${batchId} marked committed with tx ${txHash}`);
+  }
+  async getLiabilityData() {
+    const seed = Math.floor(Date.now() / 86400000);
+    return {
+      timestamp: Math.floor(Date.now() / 1000),
+      totalLiability: (BigInt(Math.floor(this.seededRandom(seed) * 50000)) * BigInt(1000000000000000000)).toString(),
+      utilizationBps: Math.floor(this.seededRandom(seed + 1) * 1000) + 500,
+      maxSingleBetExposure: (BigInt(Math.floor(this.seededRandom(seed + 2) * 5000)) * BigInt(1000000000000000000)).toString(),
+      outstandingBets: Math.floor(this.seededRandom(seed + 3) * 100) + 50
+    };
   }
   async getPendingDistributionBatches() {
     const seed = Math.floor(Date.now() / 86400000);
     return [
       {
-        epochId: seed,
+        epochId: Math.floor(Date.now() / 86400000),
         totalRewards: (BigInt(Math.floor(this.seededRandom(seed) * 1e4)) * BigInt(1000000000000000000)).toString(),
         snapshotBlock: 12345678 + Math.floor(this.seededRandom(seed) * 1000),
         lpShares: [
@@ -29217,42 +29397,48 @@ class MockLpDistributionApiClient {
             chainSelector: 16015286601757825000,
             receiver: "0x1234567890123456789012345678901234567890",
             amount: "5000000000000000000000"
-          },
-          {
-            chainSelector: 14767482510784807000,
-            receiver: "0x0987654321098765432109876543210987654321",
-            amount: "3000000000000000000000"
           }
         ]
       }
     ];
   }
-  async markBatchDistributed(batchId, results) {
-    console.log(`[Mock] Batch ${batchId} marked distributed with ${results.length} results`);
+  async getCurrentStrategyRegime() {
+    const seed = Math.floor(Date.now() / 3600000);
+    const regimeId = Math.floor(this.seededRandom(seed) * 3) + 1;
+    const regimes = {
+      1: {
+        regimeId: 1,
+        fortressSpreadBps: 100,
+        maxMultiplier: 100,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.25",
+        regimeName: "LOW_VOL"
+      },
+      2: {
+        regimeId: 2,
+        fortressSpreadBps: 150,
+        maxMultiplier: 80,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.45",
+        regimeName: "NORMAL"
+      },
+      3: {
+        regimeId: 3,
+        fortressSpreadBps: 300,
+        maxMultiplier: 50,
+        effectiveTs: Math.floor(Date.now() / 1000),
+        volatilityIndex: "0.75",
+        regimeName: "HIGH_VOL"
+      }
+    };
+    return regimes[regimeId];
   }
 }
 var createApiClient = (baseUrl, apiKey, useMock = false) => {
-  if (useMock || baseUrl.includes("localhost")) {
-    return new MockLpDistributionApiClient;
+  if (useMock || baseUrl.includes("localhost") || typeof fetch === "undefined") {
+    return new MockAppApiClient;
   }
-  return new RealLpDistributionApiClient(baseUrl, apiKey);
-};
-init_exports();
-init_encodeAbiParameters();
-var withRetry = async (fn, maxAttempts = 3) => {
-  let lastError;
-  for (let attempt = 1;attempt <= maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (error48) {
-      lastError = error48 instanceof Error ? error48 : new Error(String(error48));
-      if (attempt < maxAttempts) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 1e4);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-  throw lastError;
+  return new RealAppApiClient(baseUrl, apiKey);
 };
 var createEvmClient = (chainSelectorName, isTestnet = true) => {
   const network248 = getNetwork({
@@ -29265,27 +29451,40 @@ var createEvmClient = (chainSelectorName, isTestnet = true) => {
   }
   return new cre.capabilities.EVMClient(network248.chainSelector.selector);
 };
-var encodeDistribution = (payload) => {
+var encodePriceIntegrityReport = (payload) => {
   return encodeAbiParameters(parseAbiParameters([
     "uint256 epochId",
-    "uint256 amount",
-    "uint64 dstChainSelector",
-    "address receiver"
+    "uint256 windowStart",
+    "uint256 candleCount",
+    "bytes32 internalCandlesHash",
+    "bytes32 chainlinkCandlesHash",
+    "uint256 ohlcMaeBps",
+    "uint256 ohlcP95Bps",
+    "uint256 ohlcMaxBps",
+    "uint256 directionMatchBps",
+    "uint256 outlierCount",
+    "uint256 scoreBps",
+    "bytes32 diffMerkleRoot"
   ]), [
     BigInt(payload.epochId),
-    payload.amount,
-    payload.dstChainSelector,
-    payload.receiver
+    BigInt(payload.windowStart),
+    BigInt(payload.candleCount),
+    payload.internalCandlesHash,
+    payload.chainlinkCandlesHash,
+    BigInt(payload.ohlcMaeBps),
+    BigInt(payload.ohlcP95Bps),
+    BigInt(payload.ohlcMaxBps),
+    BigInt(payload.directionMatchBps),
+    BigInt(payload.outlierCount),
+    BigInt(payload.scoreBps),
+    payload.diffMerkleRoot
   ]);
 };
-var queueDistribution = (runtime2, evmConfig, payload) => {
+var submitPriceIntegrityReport = (runtime2, evmConfig, payload) => {
   const evmClient = createEvmClient(evmConfig.chainSelectorName);
-  const reportData = encodeDistribution(payload);
-  runtime2.log(`Queueing distribution`);
-  runtime2.log(`Epoch ID: ${payload.epochId}`);
-  runtime2.log(`Amount: ${payload.amount.toString()}`);
-  runtime2.log(`Destination Chain: ${payload.dstChainSelector.toString()}`);
-  runtime2.log(`Receiver: ${payload.receiver}`);
+  const reportData = encodePriceIntegrityReport(payload);
+  runtime2.log(`Submitting price integrity report for epoch ${payload.epochId}`);
+  runtime2.log(`Score: ${payload.scoreBps} bps, Passed: ${payload.scoreBps >= 9000 && payload.ohlcP95Bps <= 50}`);
   const reportResponse = runtime2.report({
     encodedPayload: hexToBase64(reportData),
     encoderName: "evm",
@@ -29293,19 +29492,173 @@ var queueDistribution = (runtime2, evmConfig, payload) => {
     hashingAlgo: "keccak256"
   }).result();
   const writeResult = evmClient.writeReport(runtime2, {
-    receiver: evmConfig.lpDistributorAddress,
+    receiver: evmConfig.priceIntegrityAddress,
     report: reportResponse,
     gasConfig: {
       gasLimit: evmConfig.gasLimit
     }
   }).result();
   const txHash = bytesToHex(writeResult.txHash ?? new Uint8Array(32));
-  runtime2.log(`Distribution queued. Tx: ${txHash}`);
+  runtime2.log(`Price integrity report submitted. Tx: ${txHash}`);
   return txHash;
 };
-var distributionExists = async (runtime2, evmConfig, epochId) => {
-  runtime2.log(`Checking if distribution exists for epoch ${epochId}`);
-  return false;
+var withRetry = async (fn, maxRetries = 3) => {
+  let lastError;
+  for (let i2 = 0;i2 < maxRetries; i2++) {
+    try {
+      return await fn();
+    } catch (error48) {
+      lastError = error48 instanceof Error ? error48 : new Error(String(error48));
+    }
+  }
+  throw lastError;
+};
+var hashCandle = (candle) => {
+  const data = encodeAbiParameters(parseAbiParameters([
+    "uint256 timestamp",
+    "string open",
+    "string high",
+    "string low",
+    "string close"
+  ]), [
+    BigInt(candle.timestamp),
+    candle.open,
+    candle.high,
+    candle.low,
+    candle.close
+  ]);
+  return keccak256(data);
+};
+var hashCandles = (candles) => {
+  if (candles.length === 0) {
+    return keccak256(toHex("empty_candles"));
+  }
+  const sorted = [...candles].sort((a, b) => a.timestamp - b.timestamp);
+  const leaves = sorted.map(hashCandle);
+  return computeMerkleRoot(leaves);
+};
+var computeMerkleRoot = (leaves) => {
+  if (leaves.length === 0) {
+    return keccak256(toHex(""));
+  }
+  let currentLevel = [...leaves];
+  while (currentLevel.length > 1) {
+    const nextLevel = [];
+    for (let i2 = 0;i2 < currentLevel.length; i2 += 2) {
+      const left = currentLevel[i2];
+      const right = currentLevel[i2 + 1] || left;
+      const [a, b] = left < right ? [left, right] : [right, left];
+      const combined = keccak256(encodeAbiParameters(parseAbiParameters(["bytes32 a", "bytes32 b"]), [a, b]));
+      nextLevel.push(combined);
+    }
+    currentLevel = nextLevel;
+  }
+  return currentLevel[0];
+};
+var computeDiffMerkleRoot = (internalCandles, chainlinkCandles) => {
+  const internal = [...internalCandles].sort((a, b) => a.timestamp - b.timestamp);
+  const chainlink = [...chainlinkCandles].sort((a, b) => a.timestamp - b.timestamp);
+  const diffs = [];
+  for (let i2 = 0;i2 < Math.min(internal.length, chainlink.length); i2++) {
+    const int2 = internal[i2];
+    const cl = chainlink[i2];
+    const diffData = encodeAbiParameters(parseAbiParameters([
+      "uint256 timestamp",
+      "int256 openDiff",
+      "int256 highDiff",
+      "int256 lowDiff",
+      "int256 closeDiff"
+    ]), [
+      BigInt(int2.timestamp),
+      BigInt(Math.floor((parseFloat(int2.open) - parseFloat(cl.open)) * 1e8)),
+      BigInt(Math.floor((parseFloat(int2.high) - parseFloat(cl.high)) * 1e8)),
+      BigInt(Math.floor((parseFloat(int2.low) - parseFloat(cl.low)) * 1e8)),
+      BigInt(Math.floor((parseFloat(int2.close) - parseFloat(cl.close)) * 1e8))
+    ]);
+    diffs.push(keccak256(diffData));
+  }
+  return computeMerkleRoot(diffs);
+};
+var computeCandleError = (internal, chainlink) => {
+  const intOpen = parseFloat(internal.open);
+  const intHigh = parseFloat(internal.high);
+  const intLow = parseFloat(internal.low);
+  const intClose = parseFloat(internal.close);
+  const clOpen = parseFloat(chainlink.open);
+  const clHigh = parseFloat(chainlink.high);
+  const clLow = parseFloat(chainlink.low);
+  const clClose = parseFloat(chainlink.close);
+  const openErr = Math.abs((intOpen - clOpen) / clOpen) * 1e4;
+  const highErr = Math.abs((intHigh - clHigh) / clHigh) * 1e4;
+  const lowErr = Math.abs((intLow - clLow) / clLow) * 1e4;
+  const closeErr = Math.abs((intClose - clClose) / clClose) * 1e4;
+  return (openErr + highErr + lowErr + closeErr) / 4;
+};
+var computeDirectionMatch = (internal, chainlink) => {
+  const intOpen = parseFloat(internal.open);
+  const intClose = parseFloat(internal.close);
+  const clOpen = parseFloat(chainlink.open);
+  const clClose = parseFloat(chainlink.close);
+  const intDirection = intClose >= intOpen ? 1 : -1;
+  const clDirection = clClose >= clOpen ? 1 : -1;
+  return intDirection === clDirection;
+};
+var computeMetrics = (internalCandles, chainlinkCandles) => {
+  const errors4 = [];
+  let directionMatches = 0;
+  let outlierCount = 0;
+  const minLength = Math.min(internalCandles.length, chainlinkCandles.length);
+  for (let i2 = 0;i2 < minLength; i2++) {
+    const int2 = internalCandles[i2];
+    const cl = chainlinkCandles[i2];
+    const error48 = computeCandleError(int2, cl);
+    errors4.push(error48);
+    if (error48 > priceIntegrityConfig.outlierThresholdBps) {
+      outlierCount++;
+    }
+    if (computeDirectionMatch(int2, cl)) {
+      directionMatches++;
+    }
+  }
+  if (errors4.length === 0) {
+    return {
+      ohlcMaeBps: 0,
+      ohlcP95Bps: 0,
+      ohlcMaxBps: 0,
+      directionMatchBps: 0,
+      outlierCount: 0
+    };
+  }
+  errors4.sort((a, b) => a - b);
+  const mae = errors4.reduce((a, b) => a + b, 0) / errors4.length;
+  const max = errors4[errors4.length - 1];
+  const p95Index = Math.floor(errors4.length * 0.95);
+  const p95 = errors4[Math.min(p95Index, errors4.length - 1)];
+  const directionMatchBps = Math.floor(directionMatches / minLength * 1e4);
+  return {
+    ohlcMaeBps: Math.floor(mae),
+    ohlcP95Bps: Math.floor(p95),
+    ohlcMaxBps: Math.floor(max),
+    directionMatchBps,
+    outlierCount
+  };
+};
+var computeScore = (metrics, candleCount) => {
+  const {
+    weightAccuracy,
+    weightP95,
+    weightMax,
+    weightDirection,
+    weightOutliers
+  } = priceIntegrityConfig;
+  const sAcc = Math.max(0, 1e4 - metrics.ohlcMaeBps * 200);
+  const sP95 = Math.max(0, 1e4 - metrics.ohlcP95Bps * 100);
+  const sMax = Math.max(0, 1e4 - metrics.ohlcMaxBps * 50);
+  const sDir = metrics.directionMatchBps;
+  const outlierRateBps = candleCount > 0 ? metrics.outlierCount * 1e4 / candleCount : 0;
+  const sOut = Math.max(0, 1e4 - outlierRateBps * 2);
+  const score = (weightAccuracy * sAcc + weightP95 * sP95 + weightMax * sMax + weightDirection * sDir + weightOutliers * sOut) / 1e4;
+  return Math.floor(score);
 };
 var onCronTrigger = async (runtime2, payload) => {
   let triggerTimestamp = Math.floor(Date.now() / 1000);
@@ -29313,94 +29666,74 @@ var onCronTrigger = async (runtime2, payload) => {
     triggerTimestamp = Number(payload.scheduledExecutionTime.seconds);
   }
   runtime2.log("========================================");
-  runtime2.log("LP Distribution Workflow Started");
+  runtime2.log("Price Integrity Workflow Started");
   runtime2.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime2.log("========================================");
   try {
+    const windowEnd = Math.floor(triggerTimestamp / 900) * 900;
+    const windowStart = windowEnd - 900;
+    const epochId = Math.floor(windowStart / 900);
+    runtime2.log(`Processing window: ${windowStart} - ${windowEnd} (epoch ${epochId})`);
+    runtime2.log("Checking idempotency...");
     const apiKey = runtime2.secrets?.APP_API_KEY || "mock-key";
     const apiClient = createApiClient(runtime2.config.appApiBaseUrl, apiKey, runtime2.config.appApiBaseUrl.includes("localhost"));
-    runtime2.log("Fetching pending distribution batches...");
-    const batches = await withRetry(() => apiClient.getPendingDistributionBatches());
-    runtime2.log(`Found ${batches.length} pending batches`);
-    if (batches.length === 0) {
-      runtime2.log("No pending batches to process");
-      return "No pending batches";
+    runtime2.log("Fetching internal candles...");
+    const internalResponse = await withRetry(() => apiClient.getOhlcCandles(windowStart, windowEnd, "internal"));
+    runtime2.log(`Fetched ${internalResponse.count} internal candles`);
+    runtime2.log("Fetching Chainlink candles...");
+    const chainlinkResponse = await withRetry(() => apiClient.getOhlcCandles(windowStart, windowEnd, "chainlink"));
+    runtime2.log(`Fetched ${chainlinkResponse.count} Chainlink candles`);
+    if (internalResponse.count === 0 || chainlinkResponse.count === 0) {
+      throw new Error("No candles returned from API");
     }
+    const internalCandles = [...internalResponse.candles].sort((a, b) => a.timestamp - b.timestamp);
+    const chainlinkCandles = [...chainlinkResponse.candles].sort((a, b) => a.timestamp - b.timestamp);
+    runtime2.log("Computing metrics...");
+    const metrics = computeMetrics(internalCandles, chainlinkCandles);
+    runtime2.log(`MAE: ${metrics.ohlcMaeBps} bps`);
+    runtime2.log(`P95: ${metrics.ohlcP95Bps} bps`);
+    runtime2.log(`Max: ${metrics.ohlcMaxBps} bps`);
+    runtime2.log(`Direction Match: ${metrics.directionMatchBps / 100}%`);
+    runtime2.log(`Outliers: ${metrics.outlierCount}`);
+    const scoreBps = computeScore(metrics, internalCandles.length);
+    runtime2.log(`Score: ${scoreBps} bps`);
+    const isPassed = scoreBps >= priceIntegrityConfig.minScoreBps && metrics.ohlcP95Bps <= priceIntegrityConfig.maxOhlcP95Bps;
+    let failureFlags = 0;
+    if (scoreBps < priceIntegrityConfig.minScoreBps) {
+      failureFlags |= 1;
+    }
+    if (metrics.ohlcP95Bps > priceIntegrityConfig.maxOhlcP95Bps) {
+      failureFlags |= 2;
+    }
+    runtime2.log(`Passed: ${isPassed}`);
+    runtime2.log(`Failure Flags: ${failureFlags}`);
+    const internalCandlesHash = hashCandles(internalCandles);
+    const chainlinkCandlesHash = hashCandles(chainlinkCandles);
+    const diffMerkleRoot = computeDiffMerkleRoot(internalCandles, chainlinkCandles);
+    runtime2.log(`Internal Hash: ${internalCandlesHash}`);
+    runtime2.log(`Chainlink Hash: ${chainlinkCandlesHash}`);
+    runtime2.log(`Diff Root: ${diffMerkleRoot}`);
     const evmConfig = getEvmConfig(runtime2.config);
-    const allResults = [];
-    for (const batch of batches) {
-      runtime2.log(`----------------------------------------`);
-      runtime2.log(`Processing batch: epoch ${batch.epochId}`);
-      runtime2.log(`Total rewards: ${batch.totalRewards}`);
-      runtime2.log(`Snapshot block: ${batch.snapshotBlock}`);
-      runtime2.log(`LP shares count: ${batch.lpShares.length}`);
-      runtime2.log(`Destinations count: ${batch.destinations.length}`);
-      const exists = await withRetry(() => distributionExists(runtime2, evmConfig, batch.epochId));
-      if (exists) {
-        runtime2.log(`Distribution for epoch ${batch.epochId} already exists. Skipping.`);
-        continue;
-      }
-      const batchResults = [];
-      for (const destination of batch.destinations) {
-        runtime2.log(`Processing destination:`);
-        runtime2.log(`  Chain: ${destination.chainSelector}`);
-        runtime2.log(`  Receiver: ${destination.receiver}`);
-        runtime2.log(`  Amount: ${destination.amount}`);
-        try {
-          const distributionPayload = {
-            epochId: batch.epochId,
-            amount: BigInt(destination.amount),
-            dstChainSelector: BigInt(destination.chainSelector),
-            receiver: destination.receiver
-          };
-          runtime2.log("Queueing distribution on-chain...");
-          const txHash = queueDistribution(runtime2, evmConfig, distributionPayload);
-          batchResults.push({
-            epochId: batch.epochId,
-            destination,
-            txHash,
-            status: "success"
-          });
-          runtime2.log(`✅ Distribution queued. Tx: ${txHash}`);
-        } catch (error48) {
-          const message = error48 instanceof Error ? error48.message : String(error48);
-          runtime2.log(`❌ Failed to queue distribution: ${message}`);
-          batchResults.push({
-            epochId: batch.epochId,
-            destination,
-            txHash: "",
-            status: "failed",
-            error: message
-          });
-          continue;
-        }
-      }
-      const successCount = batchResults.filter((r) => r.status === "success").length;
-      const failedCount = batchResults.filter((r) => r.status === "failed").length;
-      runtime2.log(`Batch ${batch.epochId} complete:`);
-      runtime2.log(`  Success: ${successCount}`);
-      runtime2.log(`  Failed: ${failedCount}`);
-      try {
-        await withRetry(() => apiClient.markBatchDistributed(batch.epochId, batchResults));
-        runtime2.log("Batch marked as distributed");
-      } catch (error48) {
-        const message = error48 instanceof Error ? error48.message : String(error48);
-        runtime2.log(`Warning: Failed to mark batch distributed: ${message}`);
-      }
-      allResults.push(...batchResults);
-    }
-    const totalSuccess = allResults.filter((r) => r.status === "success").length;
-    const totalFailed = allResults.filter((r) => r.status === "failed").length;
+    const reportPayload = {
+      epochId,
+      windowStart,
+      candleCount: internalCandles.length,
+      internalCandlesHash,
+      chainlinkCandlesHash,
+      ohlcMaeBps: metrics.ohlcMaeBps,
+      ohlcP95Bps: metrics.ohlcP95Bps,
+      ohlcMaxBps: metrics.ohlcMaxBps,
+      directionMatchBps: metrics.directionMatchBps,
+      outlierCount: metrics.outlierCount,
+      scoreBps,
+      diffMerkleRoot
+    };
+    const txHash = submitPriceIntegrityReport(runtime2, evmConfig, reportPayload);
     runtime2.log("========================================");
-    runtime2.log("LP Distribution Workflow Completed");
-    runtime2.log(`Total distributions: ${allResults.length}`);
-    runtime2.log(`Successful: ${totalSuccess}`);
-    runtime2.log(`Failed: ${totalFailed}`);
+    runtime2.log("Price Integrity Workflow Completed");
+    runtime2.log(`Transaction: ${txHash}`);
     runtime2.log("========================================");
-    if (totalFailed > 0) {
-      return `LP distribution completed with ${totalFailed} failures. Successful: ${totalSuccess}, Failed: ${totalFailed}`;
-    }
-    return `All ${totalSuccess} distributions queued successfully`;
+    return `Price integrity report submitted for epoch ${epochId}. Tx: ${txHash}`;
   } catch (error48) {
     const message = error48 instanceof Error ? error48.message : String(error48);
     runtime2.log(`ERROR: ${message}`);
@@ -29408,10 +29741,10 @@ var onCronTrigger = async (runtime2, payload) => {
   }
 };
 var initWorkflow = (config2) => {
-  console.log("Initializing LP Distribution Workflow");
+  console.log("Initializing Price Integrity Workflow");
   console.log(`API Base URL: ${config2.appApiBaseUrl}`);
   const cronTrigger = new CronCapability().trigger({
-    schedule: "0 0 * * *"
+    schedule: "*/15 * * * *"
   });
   return [handler(cronTrigger, onCronTrigger)];
 };

@@ -6,6 +6,20 @@ Smart contracts for the Tap.fun prediction gaming platform with Chainlink integr
 
 This is a **BTC prediction trading game** where users tap grid cells to predict BTC price movements in 5-second windows. The system uses Chainlink Data Streams for price feeds and Chainlink CRE (Runtime Environment) for autonomous workflows.
 
+## ⚠️ IMPORTANT: CRE Contract Fix Required
+
+**Current Issue:** The deployed contracts cannot receive reports from CRE workflows because they don't implement the required `IReceiver` interface.
+
+**Fix Required:** See `../specs/CRE-CONTRACT-FIX-PLAN.md` for detailed instructions.
+
+**Quick Summary:**
+- CRE workflows submit signed reports to a Chainlink `KeystoneForwarder` contract
+- Forwarder calls `onReport()` on consumer contracts
+- Contracts must inherit `ReceiverTemplate` and implement `IReceiver` interface
+- All contracts need constructor update with forwarder address
+
+**Official Docs:** https://docs.chain.link/cre/guides/workflow/using-evm-client/onchain-write/building-consumer-contracts
+
 ## Architecture
 
 | Contract | Purpose |
@@ -170,6 +184,7 @@ cast send $SETTLEMENT_ADDRESS "commitSettlementBatch(...)" \
 
 ## PoC Limitations
 
+- **No IReceiver interface** (contracts cannot receive CRE reports yet - see fix plan)
 - No real CCIP integration (event-only mock)
 - No on-chain candle verification (trusted CRE reporter)
 - No pause functionality

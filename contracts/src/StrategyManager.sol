@@ -4,11 +4,12 @@ pragma solidity ^0.8.19;
 import {Roles} from "./Roles.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress} from "./Errors.sol";
 import {VolatilityRegimeChanged} from "./Events.sol";
+import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
 
 /// @title StrategyManager
 /// @notice Governance-controlled strategy parameter updates for Fortress behavior
 /// @dev Manages volatility regime parameters that affect pricing and risk
-contract StrategyManager {
+contract StrategyManager is ReceiverTemplate {
     /// @notice Reference to the roles contract for access control
     Roles public immutable roles;
 
@@ -36,7 +37,8 @@ contract StrategyManager {
     }
 
     /// @param _roles Address of the Roles contract
-    constructor(address _roles) {
+    /// @param _forwarder Address of the Chainlink Forwarder contract
+    constructor(address _roles, address _forwarder) ReceiverTemplate(_forwarder) {
         if (_roles == address(0)) revert ZeroAddress();
         roles = Roles(_roles);
     }
@@ -50,6 +52,18 @@ contract StrategyManager {
         uint256 fortressSpreadBps,
         uint256 maxMultiplier
     ) external onlyStrategist {
+        _setVolatilityRegime(regimeId, fortressSpreadBps, maxMultiplier);
+    }
+
+    /// @notice Internal function to set a new volatility regime
+    /// @param regimeId Unique regime identifier (must be monotonically increasing)
+    /// @param fortressSpreadBps Fortress spread in basis points
+    /// @param maxMultiplier Maximum allowed multiplier
+    function _setVolatilityRegime(
+        uint256 regimeId,
+        uint256 fortressSpreadBps,
+        uint256 maxMultiplier
+    ) internal {
         if (regimeId <= latestRegimeId) revert InvalidAmount();
         if (fortressSpreadBps == 0) revert InvalidAmount();
         if (maxMultiplier == 0) revert InvalidAmount();
@@ -68,6 +82,19 @@ contract StrategyManager {
         latestRegimeId = regimeId;
 
         emit VolatilityRegimeChanged(regimeId, fortressSpreadBps, maxMultiplier);
+    }
+
+    /// @notice Processes incoming reports from Chainlink workflows
+    /// @param report The encoded report data
+    /// @dev Decodes report and updates volatility regime parameters
+    function _processReport(bytes calldata report) internal override {
+        (
+            uint256 regimeId,
+            uint256 fortressSpreadBps,
+            uint256 maxMultiplier
+        ) = abi.decode(report, (uint256, uint256, uint256));
+
+        _setVolatilityRegime(regimeId, fortressSpreadBps, maxMultiplier);
     }
 
     /// @notice Get a stored regime by ID

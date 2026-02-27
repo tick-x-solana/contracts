@@ -1,0 +1,26 @@
+RPC URL: https://eth-sepolia.api.onfinality.io/public
+
+== Logs ==
+  Deploying with owner: 0x28b94B571f8F3FEB444075B65054FFba4e10D49a
+  Reporter: 0x28b94B571f8F3FEB444075B65054FFba4e10D49a
+  Settler: 0x28b94B571f8F3FEB444075B65054FFba4e10D49a
+  Strategist: 0x28b94B571f8F3FEB444075B65054FFba4e10D49a
+  Distributor: 0x28b94B571f8F3FEB444075B65054FFba4e10D49a
+  Asset: 0x779877A7B0D9E8603169DdbD7836e478b4624789
+  Forwarder: 0x15fC6ae953E024d975e77382eEeC56A9101f9F88
+  Roles deployed at: 0x409beBf6fa4C2400f8F4991df4e8DdDd79a06C3e
+  PriceIntegrity deployed at: 0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60
+  PoolReserve deployed at: 0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673
+  Settlement deployed at: 0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6
+  LPDistributor deployed at: 0x32BC43d36EE16BaB6765A4447ED48DC3210969EC
+  StrategyManager deployed at: 0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660
+  Settlement set as settler in Roles
+  LPDistributor set as distributor in Roles
+  
+=== Deployment Summary ===
+  Roles: 0x409beBf6fa4C2400f8F4991df4e8DdDd79a06C3e
+  PriceIntegrity: 0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60
+  PoolReserve: 0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673
+  Settlement: 0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6
+  LPDistributor: 0x32BC43d36EE16BaB6765A4447ED48DC3210969EC
+  StrategyManager: 0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660

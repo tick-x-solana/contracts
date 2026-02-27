@@ -10,6 +10,9 @@
 //
 // Trigger: cron (*/15 * * * *)
 // Contract: PriceIntegrity.submitBatchComparison(...)
+//
+// REAL CONTRACT: 0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60 (Sepolia)
+// To use real contract: cre workflow simulate price-integrity --target sepolia-real --broadcast
 
 import {
   CronCapability,

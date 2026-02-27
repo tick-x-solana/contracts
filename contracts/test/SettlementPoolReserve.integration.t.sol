@@ -36,10 +36,10 @@ contract SettlementPoolReserveIntegrationTest is Test {
         roles = new Roles(owner, reporter, owner, address(0), distributor);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset));
+        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
         
         // Deploy Settlement
-        settlement = new Settlement(address(roles), address(poolReserve));
+        settlement = new Settlement(address(roles), address(poolReserve), address(0x999));
         
         // Set Settlement contract as the settler in Roles so it can call PoolReserve
         vm.prank(owner);

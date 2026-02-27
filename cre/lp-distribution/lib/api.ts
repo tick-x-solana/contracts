@@ -122,7 +122,9 @@ export class MockLpDistributionApiClient implements LpDistributionApiClient {
 // ========================================
 
 export const createApiClient = (baseUrl: string, apiKey: string, useMock = false): LpDistributionApiClient => {
-  if (useMock || baseUrl.includes("localhost")) {
+  // Always use mock in CRE WASM environment (fetch not available)
+  // In production deployment, this would use the CRE HTTP capability
+  if (useMock || baseUrl.includes("localhost") || typeof fetch === "undefined") {
     return new MockLpDistributionApiClient();
   }
   return new RealLpDistributionApiClient(baseUrl, apiKey);

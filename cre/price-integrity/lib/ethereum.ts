@@ -176,13 +176,9 @@ export const computeMerkleRoot = (leaves: `0x${string}`[]): `0x${string}` => {
   return currentLevel[0];
 };
 
-export const sleep = (ms: number): Promise<void> => 
-  new Promise(resolve => setTimeout(resolve, ms));
-
 export const withRetry = async <T>(
   fn: () => Promise<T>,
-  maxRetries = 3,
-  delayMs = 1000
+  maxRetries = 3
 ): Promise<T> => {
   let lastError: Error | undefined;
   
@@ -191,9 +187,7 @@ export const withRetry = async <T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      if (i < maxRetries - 1) {
-        await sleep(delayMs * Math.pow(2, i)); // Exponential backoff
-      }
+      // Continue to next retry (no delay in CRE WASM environment)
     }
   }
   

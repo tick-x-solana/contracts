@@ -301,7 +301,9 @@ export class MockAppApiClient implements AppApiClient {
 // ========================================
 
 export const createApiClient = (baseUrl: string, apiKey: string, useMock = false): AppApiClient => {
-  if (useMock || baseUrl.includes("localhost")) {
+  // Always use mock in CRE WASM environment (fetch not available)
+  // In production deployment, this would use the CRE HTTP capability
+  if (useMock || baseUrl.includes("localhost") || typeof fetch === "undefined") {
     return new MockAppApiClient();
   }
   return new RealAppApiClient(baseUrl, apiKey);

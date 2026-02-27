@@ -25,3 +25,11 @@ production:
     workflow-path: "./main.ts"
     config-path: "./config.json"
     secrets-path: "../secrets.yaml"
+
+sepolia-real:
+  user-workflow:
+    workflow-name: "tapfun-price-integrity"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.json"
+    secrets-path: "../secrets.yaml"

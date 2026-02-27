@@ -4,6 +4,9 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {PriceIntegrity} from "../src/PriceIntegrity.sol";
 import {Roles} from "../src/Roles.sol";
+import {ReceiverTemplate} from "../src/abstracts/ReceiverTemplate.sol";
+import {IReceiver} from "../src/interfaces/IReceiver.sol";
+import {IERC165} from "../src/interfaces/IERC165.sol";
 import {Unauthorized, InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
 import {PriceIntegrityBatchReported} from "../src/Events.sol";
 
@@ -14,6 +17,7 @@ contract PriceIntegrityTest is Test {
     address public owner = address(1);
     address public reporter = address(2);
     address public randomUser = address(99);
+    address public forwarder = address(100); // Mock forwarder for testing
 
     // Test data
     uint256 constant EPOCH_1 = 1;
@@ -34,8 +38,8 @@ contract PriceIntegrityTest is Test {
         vm.prank(owner);
         roles = new Roles(owner, reporter, address(0), address(0), address(0));
         
-        // Deploy PriceIntegrity
-        priceIntegrity = new PriceIntegrity(address(roles));
+        // Deploy PriceIntegrity with forwarder
+        priceIntegrity = new PriceIntegrity(address(roles), forwarder);
     }
 
     // ==================== Constructor Tests ====================
@@ -47,7 +51,7 @@ contract PriceIntegrityTest is Test {
 
     function test_ConstructorRevertsOnZeroAddress() public {
         vm.expectRevert(ZeroAddress.selector);
-        new PriceIntegrity(address(0));
+        new PriceIntegrity(address(0), forwarder);
     }
 
     // ==================== Happy Path Tests ====================
@@ -466,5 +470,113 @@ contract PriceIntegrityTest is Test {
         
         // Verify monotonic progression maintained
         assertEq(priceIntegrity.latestEpochId(), 3);
+    }
+
+    // ==================== IReceiver / onReport Tests ====================
+
+    function test_OnReport_Success() public {
+        // Encode report data (same as workflow encoding)
+        bytes memory report = abi.encode(
+            EPOCH_1,
+            WINDOW_START,
+            CANDLE_COUNT,
+            INTERNAL_HASH,
+            CHAINLINK_HASH,
+            MAE_BPS,
+            P95_BPS,
+            MAX_BPS,
+            DIR_MATCH_BPS,
+            OUTLIER_COUNT,
+            SCORE_BPS,
+            DIFF_ROOT
+        );
+
+        // Call onReport as forwarder
+        vm.prank(forwarder);
+        priceIntegrity.onReport("", report);
+
+        // Verify report stored
+        assertEq(priceIntegrity.latestEpochId(), EPOCH_1);
+        
+        PriceIntegrity.BatchReport memory stored = priceIntegrity.getReport(EPOCH_1);
+        assertEq(stored.epochId, EPOCH_1);
+        assertEq(stored.scoreBps, SCORE_BPS);
+        assertTrue(stored.isPassed);
+    }
+
+    function test_OnReport_RevertInvalidSender() public {
+        bytes memory report = abi.encode(
+            EPOCH_1, WINDOW_START, CANDLE_COUNT, INTERNAL_HASH, CHAINLINK_HASH,
+            MAE_BPS, P95_BPS, MAX_BPS, DIR_MATCH_BPS, OUTLIER_COUNT, SCORE_BPS, DIFF_ROOT
+        );
+
+        // Call onReport as non-forwarder should revert
+        vm.prank(randomUser);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ReceiverTemplate.InvalidSender.selector,
+                randomUser,
+                forwarder
+            )
+        );
+        priceIntegrity.onReport("", report);
+    }
+
+    function test_OnReport_MultipleEpochs() public {
+        // Submit epoch 1 via onReport
+        vm.startPrank(forwarder);
+        
+        priceIntegrity.onReport("", abi.encode(
+            1, WINDOW_START, CANDLE_COUNT, INTERNAL_HASH, CHAINLINK_HASH,
+            MAE_BPS, P95_BPS, MAX_BPS, DIR_MATCH_BPS, OUTLIER_COUNT, SCORE_BPS, DIFF_ROOT
+        ));
+        
+        // Submit epoch 2 via onReport
+        priceIntegrity.onReport("", abi.encode(
+            2, WINDOW_START + 900, CANDLE_COUNT, INTERNAL_HASH, CHAINLINK_HASH,
+            MAE_BPS, P95_BPS, MAX_BPS, DIR_MATCH_BPS, OUTLIER_COUNT, SCORE_BPS, DIFF_ROOT
+        ));
+        
+        vm.stopPrank();
+
+        assertEq(priceIntegrity.latestEpochId(), 2);
+    }
+
+    function test_SupportsInterface() public view {
+        // IReceiver interface ID
+        bytes4 receiverInterface = type(IReceiver).interfaceId;
+        assertTrue(priceIntegrity.supportsInterface(receiverInterface));
+
+        // IERC165 interface ID
+        bytes4 erc165Interface = type(IERC165).interfaceId;
+        assertTrue(priceIntegrity.supportsInterface(erc165Interface));
+    }
+
+    function test_ForwarderAddressGetter() public view {
+        assertEq(priceIntegrity.getForwarderAddress(), forwarder);
+    }
+
+    function test_UpdateForwarderAddress() public {
+        address newForwarder = address(101);
+        address actualOwner = priceIntegrity.owner();
+        
+        vm.prank(actualOwner);
+        priceIntegrity.updateForwarderAddress(newForwarder);
+        
+        assertEq(priceIntegrity.getForwarderAddress(), newForwarder);
+    }
+
+    function test_UpdateForwarderAddress_RevertNonOwner() public {
+        address actualOwner = priceIntegrity.owner();
+        
+        vm.prank(randomUser);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ReceiverTemplate.OnlyOwner.selector,
+                randomUser,
+                actualOwner
+            )
+        );
+        priceIntegrity.updateForwarderAddress(address(101));
     }
 }

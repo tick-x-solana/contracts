@@ -12,6 +12,9 @@
 //
 // Trigger: cron (daily at 00:00 UTC)
 // Contract: PoolReserve.reportSolvency(...)
+//
+// REAL CONTRACT: 0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673 (Sepolia)
+// To use real contract: cre workflow simulate pool-solvency --target sepolia-real --broadcast
 
 import {
   CronCapability,

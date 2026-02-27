@@ -2,13 +2,14 @@
 pragma solidity ^0.8.19;
 
 import {Roles} from "./Roles.sol";
+import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
 import {Unauthorized, InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "./Errors.sol";
 import {PriceIntegrityBatchReported} from "./Events.sol";
 
 /// @title PriceIntegrity
 /// @notice On-chain price integrity reporting for 15-minute batches of 1-second candles
-/// @dev CRE submits batch comparisons; contract stores all valid submissions with pass/fail flags
-contract PriceIntegrity {
+/// @dev CRE submits batch comparisons via onReport; contract stores all valid submissions with pass/fail flags
+contract PriceIntegrity is ReceiverTemplate {
     /// @notice Minimum score threshold (9000 bps = 90%)
     uint256 public constant MIN_SCORE_BPS = 9000;
     
@@ -67,13 +68,53 @@ contract PriceIntegrity {
     }
 
     /// @param _roles Address of the Roles contract
-    constructor(address _roles) {
+    /// @param _forwarder Address of the Chainlink KeystoneForwarder contract
+    constructor(address _roles, address _forwarder) ReceiverTemplate(_forwarder) {
         if (_roles == address(0)) revert ZeroAddress();
         roles = Roles(_roles);
     }
 
-    /// @notice Submit a batch price comparison report from CRE
-    /// @dev Stores all valid submissions; marks pass/fail based on quality gates
+    /// @notice Process incoming price integrity reports from CRE workflow
+    /// @param report ABI-encoded PriceIntegrityPayload
+    function _processReport(bytes calldata report) internal override {
+        // Decode report from workflow
+        (
+            uint256 epochId,
+            uint256 windowStart,
+            uint256 candleCount,
+            bytes32 internalCandlesHash,
+            bytes32 chainlinkCandlesHash,
+            uint256 ohlcMaeBps,
+            uint256 ohlcP95Bps,
+            uint256 ohlcMaxBps,
+            uint256 directionMatchBps,
+            uint256 outlierCount,
+            uint256 scoreBps,
+            bytes32 diffMerkleRoot
+        ) = abi.decode(
+            report, 
+            (uint256, uint256, uint256, bytes32, bytes32, uint256, uint256, uint256, uint256, uint256, uint256, bytes32)
+        );
+
+        // Call internal submit logic
+        _submitBatchComparison(
+            epochId,
+            windowStart,
+            candleCount,
+            internalCandlesHash,
+            chainlinkCandlesHash,
+            ohlcMaeBps,
+            ohlcP95Bps,
+            ohlcMaxBps,
+            directionMatchBps,
+            outlierCount,
+            scoreBps,
+            diffMerkleRoot
+        );
+    }
+
+    /// @notice Submit a batch price comparison report from CRE (manual/legacy entry point)
+    /// @dev Can still be called directly by reporter for testing/emergencies
     /// @param epochId Unique epoch identifier (must be monotonically increasing)
     /// @param windowStart Start timestamp of the comparison window
     /// @param candleCount Number of 1-second candles in the batch
@@ -100,6 +141,37 @@ contract PriceIntegrity {
         uint256 scoreBps,
         bytes32 diffMerkleRoot
     ) external onlyReporter {
+        _submitBatchComparison(
+            epochId,
+            windowStart,
+            candleCount,
+            internalCandlesHash,
+            chainlinkCandlesHash,
+            ohlcMaeBps,
+            ohlcP95Bps,
+            ohlcMaxBps,
+            directionMatchBps,
+            outlierCount,
+            scoreBps,
+            diffMerkleRoot
+        );
+    }
+
+    /// @dev Internal function containing the actual submit logic
+    function _submitBatchComparison(
+        uint256 epochId,
+        uint256 windowStart,
+        uint256 candleCount,
+        bytes32 internalCandlesHash,
+        bytes32 chainlinkCandlesHash,
+        uint256 ohlcMaeBps,
+        uint256 ohlcP95Bps,
+        uint256 ohlcMaxBps,
+        uint256 directionMatchBps,
+        uint256 outlierCount,
+        uint256 scoreBps,
+        bytes32 diffMerkleRoot
+    ) internal {
         // Validate epoch monotonicity
         if (epochId <= latestEpochId) {
             revert StaleEpoch(epochId, latestEpochId + 1);

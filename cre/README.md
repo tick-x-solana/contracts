@@ -14,10 +14,10 @@ This project implements 5 CRE workflows that interact with the Tap.fun smart con
 | Workflow | Trigger | Purpose | Status |
 |----------|---------|---------|--------|
 | **Price Integrity** | 15m cron | OHLC candle comparison with pass/fail reporting | ✅ Complete |
-| **Settlement** | 15m cron | Batch settlement commitment | ⏳ Pending |
-| **Pool Solvency PoR** | Daily cron | Proof-of-reserve solvency reporting | ⏳ Pending |
-| **LP Distribution** | Daily cron | LP reward distribution queueing | ⏳ Pending |
-| **Strategy Rebalance** | HTTP trigger | Volatility regime parameter updates | ⏳ Pending |
+| **Settlement** | 15m cron | Batch settlement commitment | ✅ Complete |
+| **Pool Solvency PoR** | Daily cron | Proof-of-reserve solvency reporting | ✅ Complete |
+| **LP Distribution** | Daily cron | LP reward distribution queueing | ✅ Complete |
+| **Strategy Rebalance** | 15m cron | Volatility regime parameter updates | ✅ Complete |
 
 ## Project Structure
 
@@ -80,8 +80,15 @@ bun test
 ### Run Simulation
 
 ```bash
-# Local simulation
+# Local simulation with mock contracts
 cre workflow simulate price-integrity --target local-simulation
+
+# With real Sepolia contracts (read-only, no broadcast)
+cre workflow simulate price-integrity --target sepolia-real
+
+# With real Sepolia contracts (broadcast transactions - requires private key)
+export CRE_ETH_PRIVATE_KEY="your-private-key"
+cre workflow simulate price-integrity --target sepolia-real --broadcast
 ```
 
 ## Creating New Workflows
@@ -133,6 +140,22 @@ Each workflow has its own `config.json` in the `workflows/{name}/` directory:
   ]
 }
 ```
+
+## Deployed Contracts (Sepolia Testnet)
+
+Contracts have been deployed to Sepolia testnet:
+
+| Contract | Address |
+|----------|---------|
+| **Roles** | `0xC74DA4c872d6e547aD2c2a98116bBdfc70754844` |
+| **PriceIntegrity** | `0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60` |
+| **PoolReserve** | `0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673` |
+| **Settlement** | `0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6` |
+| **LPDistributor** | `0x32BC43d36EE16BaB6765A4447ED48DC3210969EC` |
+| **StrategyManager** | `0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660` |
+| **Asset (USDT)** | `0x779877A7B0D9E8603169DdbD7836e478b4624789` |
+
+RPC URL: `https://eth-sepolia.api.onfinality.io/public`
 
 ## Workflow 1: Price Integrity
 

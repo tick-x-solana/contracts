@@ -5,11 +5,13 @@ import {Roles} from "./Roles.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress, DuplicateBatchId, InvalidWindow} from "./Errors.sol";
 import {SettlementBatchCommitted, PaidMarked} from "./Events.sol";
 import {PoolReserve} from "./PoolReserve.sol";
+import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
+import {IReceiver} from "./interfaces/IReceiver.sol";
 
 /// @title Settlement
 /// @notice Settlement batch commitment and payout tracking
 /// @dev CRE commits settlement outcomes; contract stores batch metadata and manages withdrawable updates
-contract Settlement {
+contract Settlement is ReceiverTemplate {
     /// @notice Reference to the roles contract for access control
     Roles public immutable roles;
 
@@ -42,21 +44,23 @@ contract Settlement {
         _;
     }
 
-    modifier onlyOwner() {
+    /// @notice Override onlyOwner to use Roles contract for access control
+    modifier onlyOwner() override {
         if (msg.sender != roles.owner()) revert Unauthorized(msg.sender);
         _;
     }
 
     /// @param _roles Address of the Roles contract
     /// @param _poolReserve Address of the PoolReserve contract
-    constructor(address _roles, address _poolReserve) {
+    /// @param _forwarder Address of the Chainlink Forwarder contract
+    constructor(address _roles, address _poolReserve, address _forwarder) ReceiverTemplate(_forwarder) {
         if (_roles == address(0)) revert ZeroAddress();
         if (_poolReserve == address(0)) revert ZeroAddress();
         roles = Roles(_roles);
         poolReserve = PoolReserve(_poolReserve);
     }
 
-    /// @notice Commit a settlement batch (called by settler)
+    /// @notice Commit a settlement batch (called by owner)
     /// @param batchId Unique batch identifier (e.g., keccak256 of window data)
     /// @param merkleRoot Merkle root of settlement outcomes
     /// @param totalPayout Total payout amount for this batch
@@ -71,6 +75,24 @@ contract Settlement {
         uint256 windowStart,
         uint256 windowEnd
     ) external onlyOwner {
+        _commitSettlementBatch(batchId, merkleRoot, totalPayout, withdrawableCap, windowStart, windowEnd);
+    }
+
+    /// @notice Internal function to commit a settlement batch
+    /// @param batchId Unique batch identifier (e.g., keccak256 of window data)
+    /// @param merkleRoot Merkle root of settlement outcomes
+    /// @param totalPayout Total payout amount for this batch
+    /// @param withdrawableCap New withdrawable cap per account (or global cap logic)
+    /// @param windowStart Start timestamp of the settlement window
+    /// @param windowEnd End timestamp of the settlement window
+    function _commitSettlementBatch(
+        bytes32 batchId,
+        bytes32 merkleRoot,
+        uint256 totalPayout,
+        uint256 withdrawableCap,
+        uint256 windowStart,
+        uint256 windowEnd
+    ) internal {
         if (batchId == bytes32(0)) revert InvalidAmount();
         if (batches[batchId].exists) revert DuplicateBatchId(batchId);
         if (windowEnd <= windowStart) revert InvalidWindow();
@@ -97,6 +119,21 @@ contract Settlement {
             windowStart,
             windowEnd
         );
+    }
+
+    /// @notice Process a report from the Chainlink Forwarder
+    /// @param report The raw report data containing encoded settlement batch params
+    function _processReport(bytes calldata report) internal override {
+        (
+            bytes32 batchId,
+            bytes32 merkleRoot,
+            uint256 totalPayout,
+            uint256 withdrawableCap,
+            uint256 windowStart,
+            uint256 windowEnd
+        ) = abi.decode(report, (bytes32, bytes32, uint256, uint256, uint256, uint256));
+
+        _commitSettlementBatch(batchId, merkleRoot, totalPayout, withdrawableCap, windowStart, windowEnd);
     }
 
     /// @notice Get a stored batch by batch ID

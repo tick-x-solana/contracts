@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {Roles} from "./Roles.sol";
+import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
 import {
     Unauthorized,
     InvalidAmount,
@@ -25,7 +26,7 @@ import {
 /// @title PoolReserve
 /// @notice App currency vault with LP share accounting and separate trader balances
 /// @dev Handles LP deposits/withdrawals, trader collateral, and solvency reporting
-contract PoolReserve {
+contract PoolReserve is ReceiverTemplate {
     /// @notice Minimum solvency ratio (1.5x = 1.5e18)
     uint256 public constant MIN_SOLVENCY_RATIO = 1.5e18;
 
@@ -70,7 +71,7 @@ contract PoolReserve {
     /// @notice Stored solvency reports by epoch ID
     mapping(uint256 => SolvencyReport) public solvencyReports;
 
-    modifier onlyOwner() {
+    modifier onlyOwner() override {
         if (msg.sender != roles.owner()) revert Unauthorized(msg.sender);
         _;
     }
@@ -92,7 +93,8 @@ contract PoolReserve {
 
     /// @param _roles Address of the Roles contract
     /// @param _asset Address of the ERC20 asset (e.g., USDT)
-    constructor(address _roles, address _asset) {
+    /// @param _forwarder Address of the forwarder contract
+    constructor(address _roles, address _asset, address _forwarder) ReceiverTemplate(_forwarder) {
         if (_roles == address(0)) revert ZeroAddress();
         if (_asset == address(0)) revert ZeroAddress();
         roles = Roles(_roles);
@@ -200,19 +202,33 @@ contract PoolReserve {
 
     // ==================== Solvency Reporting ====================
 
-    /// @notice Report solvency metrics (called by reporter)
+    /// @notice Process report from receiver template (called by forwarder)
+    /// @param report Encoded solvency report data
+    function _processReport(bytes calldata report) internal override {
+        (
+            uint256 epochId,
+            uint256 poolBalance,
+            uint256 totalLiability,
+            uint256 utilizationBps,
+            uint256 maxSingleBetExposure
+        ) = abi.decode(report, (uint256, uint256, uint256, uint256, uint256));
+
+        _reportSolvency(epochId, poolBalance, totalLiability, utilizationBps, maxSingleBetExposure);
+    }
+
+    /// @notice Internal function to process solvency report
     /// @param epochId Unique epoch identifier (must be monotonically increasing)
     /// @param poolBalance Total pool balance at time of report
     /// @param totalLiability Total outstanding liability
     /// @param utilizationBps Utilization ratio in basis points
     /// @param maxSingleBetExposure Maximum exposure from a single bet
-    function reportSolvency(
+    function _reportSolvency(
         uint256 epochId,
         uint256 poolBalance,
         uint256 totalLiability,
         uint256 utilizationBps,
         uint256 maxSingleBetExposure
-    ) external onlyReporter {
+    ) internal {
         // Validate epoch monotonicity
         if (epochId <= latestSolvencyEpochId) {
             revert InvalidAmount(); // Reusing error for simplicity
@@ -251,6 +267,22 @@ contract PoolReserve {
             utilizationBps,
             maxSingleBetExposure
         );
+    }
+
+    /// @notice Report solvency metrics (called by reporter)
+    /// @param epochId Unique epoch identifier (must be monotonically increasing)
+    /// @param poolBalance Total pool balance at time of report
+    /// @param totalLiability Total outstanding liability
+    /// @param utilizationBps Utilization ratio in basis points
+    /// @param maxSingleBetExposure Maximum exposure from a single bet
+    function reportSolvency(
+        uint256 epochId,
+        uint256 poolBalance,
+        uint256 totalLiability,
+        uint256 utilizationBps,
+        uint256 maxSingleBetExposure
+    ) external onlyReporter {
+        _reportSolvency(epochId, poolBalance, totalLiability, utilizationBps, maxSingleBetExposure);
     }
 
     /// @notice Get a stored solvency report by epoch ID

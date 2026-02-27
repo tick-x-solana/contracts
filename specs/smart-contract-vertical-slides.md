@@ -315,18 +315,49 @@ volatilityIndex >= 0.60 → HIGH_VOL (spread: 300 bps, maxMultiplier: 50)
 
 ---
 
-## Slide 16: Final CRE Gate ✅
+## Slide 16: Final CRE Gate ✅ (Partial)
 
 ### Objective
-- [x] Ensure all 5 workflows are production-ready.
+- [ ] Ensure all 5 workflows are production-ready with real contract integration.
 
-### Acceptance Criteria
+### Current Status
 - [x] All workflows implement requirements from acceptance criteria.
 - [x] All unit tests pass (81 tests, >80% coverage).
 - [x] All integration tests pass.
 - [x] All simulation tests pass.
 - [x] Documentation complete.
 - [x] Secrets management configured.
+- [x] Real contracts deployed to Sepolia.
+- [ ] **Contracts updated to receive CRE reports via IReceiver interface**
+
+### ⚠️ CRITICAL: Contract Fix Required
+
+Current contracts cannot receive CRE workflow reports. See **`CRE-CONTRACT-FIX-PLAN.md`** for detailed fix instructions.
+
+**Problem:**
+CRE workflows submit signed reports to a Chainlink `KeystoneForwarder` contract, which then calls `onReport()` on consumer contracts. Current contracts don't implement the required `IReceiver` interface.
+
+**Solution:**
+All consumer contracts must:
+1. Inherit from `ReceiverTemplate` (Chainlink provided)
+2. Implement `IReceiver` interface
+3. Add `_processReport(bytes calldata report)` function
+4. Include forwarder address in constructor
+
+**Official Docs:** https://docs.chain.link/cre/guides/workflow/using-evm-client/onchain-write/building-consumer-contracts
+
+### Fix Tasks (See CRE-CONTRACT-FIX-PLAN.md)
+
+- [ ] Task 1: Add IReceiver and ReceiverTemplate files
+- [ ] Task 2: Update PriceIntegrity contract
+- [ ] Task 3: Update Settlement contract
+- [ ] Task 4: Update PoolReserve contract
+- [ ] Task 5: Update LPDistributor contract
+- [ ] Task 6: Update StrategyManager contract
+- [ ] Task 7: Update deploy script with forwarder address
+- [ ] Task 8: Update all test files
+- [ ] Task 9: Re-deploy contracts to Sepolia
+- [ ] Task 10: Test end-to-end with real workflow execution
 
 ### Validation Checklist
 - [x] Run full test suite: `bun test` (81 tests passing).
@@ -334,6 +365,17 @@ volatilityIndex >= 0.60 → HIGH_VOL (spread: 300 bps, maxMultiplier: 50)
 - [x] Verify no hardcoded secrets (using secrets.yaml).
 - [x] Verify deterministic behavior (all workflows deterministic).
 - [x] Complete deployment guide (AGENTS.md + README.md).
+- [x] Real contracts deployed to Sepolia.
+- [ ] Contracts receive and process CRE workflow reports successfully.
+
+**Deployed Contracts (Sepolia):**
+```
+PriceIntegrity:   0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60
+Settlement:       0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6
+PoolReserve:      0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673
+LPDistributor:    0x32BC43d36EE16BaB6765A4447ED48DC3210969EC
+StrategyManager:  0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660
+```
 
 **Final Status:**
 
@@ -358,12 +400,15 @@ cd cre && bun run build
 # Test (81 tests)
 bun test
 
-# Simulations (all cron-based)
+# Local simulation (mock contracts)
 cre workflow simulate price-integrity --target local-simulation
-cre workflow simulate settlement --target local-simulation
-cre workflow simulate pool-solvency --target local-simulation
-cre workflow simulate lp-distribution --target local-simulation
-cre workflow simulate strategy-rebalance --target local-simulation
+
+# Real contract simulation (Sepolia, read-only)
+cre workflow simulate price-integrity --target sepolia-real
+
+# Real contract simulation (Sepolia, broadcast transactions)
+export CRE_ETH_PRIVATE_KEY="your-private-key"
+cre workflow simulate price-integrity --target sepolia-real --broadcast
 ```
 
 ---

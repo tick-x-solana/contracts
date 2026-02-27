@@ -1,14 +1,14 @@
 {
-  "appApiBaseUrl": "http://localhost:3000/api/v1",
+  "appApiBaseUrl": "https://api.tap.fun/v1",
   "evms": [
     {
       "chainSelectorName": "ethereum-testnet-sepolia",
       "chainId": 11155111,
-      "priceIntegrityAddress": "0x0000000000000000000000000000000000000000",
-      "settlementAddress": "0x0000000000000000000000000000000000000000",
-      "poolReserveAddress": "0x0000000000000000000000000000000000000000",
-      "lpDistributorAddress": "0x0000000000000000000000000000000000000000",
-      "strategyManagerAddress": "0x0000000000000000000000000000000000000000",
+      "priceIntegrityAddress": "0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60",
+      "settlementAddress": "0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6",
+      "poolReserveAddress": "0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673",
+      "lpDistributorAddress": "0x32BC43d36EE16BaB6765A4447ED48DC3210969EC",
+      "strategyManagerAddress": "0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660",
       "gasLimit": "1000000"
     }
   ]

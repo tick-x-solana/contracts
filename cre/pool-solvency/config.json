@@ -1,11 +1,11 @@
 {
-  "appApiBaseUrl": "http://localhost:3000/api/v1",
+  "appApiBaseUrl": "https://api.tap.fun/v1",
   "evms": [
     {
       "chainSelectorName": "ethereum-testnet-sepolia",
       "chainId": 11155111,
-      "poolReserveAddress": "0x0000000000000000000000000000000000000000",
-      "gasLimit": "300000"
+      "poolReserveAddress": "0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673",
+      "gasLimit": "500000"
     }
   ],
   "minSolvencyRatio": "1500000000000000000"

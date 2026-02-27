@@ -7,6 +7,7 @@ import {PoolReserve} from "../src/PoolReserve.sol";
 import {Roles} from "../src/Roles.sol";
 import {MockERC20} from "./PoolReserve.t.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress, DuplicateBatchId, InvalidWindow} from "../src/Errors.sol";
+import {IReceiver} from "../src/interfaces/IReceiver.sol";
 import {SettlementBatchCommitted, PaidMarked} from "../src/Events.sol";
 
 contract SettlementTest is Test {
@@ -41,10 +42,10 @@ contract SettlementTest is Test {
         roles = new Roles(owner, reporter, address(0), address(0), distributor);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset));
+        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
         
         // Deploy Settlement (pointing to poolReserve, but we'll update roles after)
-        settlement = new Settlement(address(roles), address(poolReserve));
+        settlement = new Settlement(address(roles), address(poolReserve), address(0x999));
         
         // Set Settlement contract as the settler in PoolReserve via Roles
         // This allows Settlement to call setWithdrawable on PoolReserve
@@ -66,12 +67,12 @@ contract SettlementTest is Test {
 
     function test_ConstructorRevertsOnZeroRoles() public {
         vm.expectRevert(ZeroAddress.selector);
-        new Settlement(address(0), address(poolReserve));
+        new Settlement(address(0), address(poolReserve), address(0x999));
     }
 
     function test_ConstructorRevertsOnZeroPoolReserve() public {
         vm.expectRevert(ZeroAddress.selector);
-        new Settlement(address(roles), address(0));
+        new Settlement(address(roles), address(0), address(0x999));
     }
 
     // ==================== Commit Settlement Batch Tests ====================
@@ -398,5 +399,99 @@ contract SettlementTest is Test {
         vm.prank(randomUser);
         vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
         settlement.batchSetWithdrawable(accounts, amounts);
+    }
+
+    // ==================== IReceiver / onReport Tests ====================
+
+    function test_OnReport_Success() public {
+        // Encode report
+        bytes memory report = abi.encode(
+            BATCH_ID_1,
+            MERKLE_ROOT,
+            TOTAL_PAYOUT,
+            WITHDRAWABLE_CAP,
+            WINDOW_START,
+            WINDOW_END
+        );
+
+        // Call onReport as forwarder (address(0x999) was set in setUp)
+        vm.prank(address(0x999));
+        vm.expectEmit(true, false, false, true);
+        emit SettlementBatchCommitted(
+            BATCH_ID_1,
+            MERKLE_ROOT,
+            TOTAL_PAYOUT,
+            WITHDRAWABLE_CAP,
+            WINDOW_START,
+            WINDOW_END
+        );
+        settlement.onReport("", report);
+
+        // Verify batch was committed
+        assertEq(settlement.batchCount(), 1);
+        Settlement.Batch memory batch = settlement.getBatch(BATCH_ID_1);
+        assertTrue(batch.exists);
+        assertEq(batch.merkleRoot, MERKLE_ROOT);
+    }
+
+    function test_OnReport_RevertInvalidSender() public {
+        bytes memory report = abi.encode(
+            BATCH_ID_1,
+            MERKLE_ROOT,
+            TOTAL_PAYOUT,
+            WITHDRAWABLE_CAP,
+            WINDOW_START,
+            WINDOW_END
+        );
+
+        // Call onReport as non-forwarder should revert
+        vm.prank(randomUser);
+        vm.expectRevert(abi.encodeWithSelector(
+            bytes4(keccak256("InvalidSender(address,address)")),
+            randomUser,
+            address(0x999)
+        ));
+        settlement.onReport("", report);
+    }
+
+    function test_OnReport_MultipleBatches() public {
+        // First batch
+        vm.prank(address(0x999));
+        settlement.onReport("", abi.encode(
+            BATCH_ID_1,
+            MERKLE_ROOT,
+            TOTAL_PAYOUT,
+            WITHDRAWABLE_CAP,
+            WINDOW_START,
+            WINDOW_END
+        ));
+
+        // Second batch via onReport
+        bytes32 batchId2 = keccak256("batch_2");
+        vm.prank(address(0x999));
+        settlement.onReport("", abi.encode(
+            batchId2,
+            MERKLE_ROOT,
+            TOTAL_PAYOUT,
+            WITHDRAWABLE_CAP,
+            WINDOW_START + 1000,
+            WINDOW_END + 1000
+        ));
+
+        assertEq(settlement.batchCount(), 2);
+    }
+
+    function test_SupportsInterface() public view {
+        // IReceiver interface ID
+        bytes4 receiverInterface = type(IReceiver).interfaceId;
+        assertTrue(settlement.supportsInterface(receiverInterface));
+
+        // ERC165 interface ID
+        bytes4 erc165Interface = 0x01ffc9a7;
+        assertTrue(settlement.supportsInterface(erc165Interface));
+    }
+
+    function test_ForwarderAddressGetter() public view {
+        assertEq(settlement.getForwarderAddress(), address(0x999));
     }
 }

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {StrategyManager} from "../src/StrategyManager.sol";
 import {Roles} from "../src/Roles.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
+import {IReceiver} from "../src/interfaces/IReceiver.sol";
 import {VolatilityRegimeChanged} from "../src/Events.sol";
 
 contract StrategyManagerTest is Test {
@@ -21,7 +22,7 @@ contract StrategyManagerTest is Test {
         roles = new Roles(owner, address(0), address(0), strategist, address(0));
         
         // Deploy StrategyManager
-        strategyManager = new StrategyManager(address(roles));
+        strategyManager = new StrategyManager(address(roles), address(0x999));
     }
 
     // ==================== Constructor Tests ====================
@@ -33,7 +34,7 @@ contract StrategyManagerTest is Test {
 
     function test_ConstructorRevertsOnZeroAddress() public {
         vm.expectRevert(ZeroAddress.selector);
-        new StrategyManager(address(0));
+        new StrategyManager(address(0), address(0x999));
     }
 
     // ==================== Set Volatility Regime Tests ====================
@@ -170,5 +171,67 @@ contract StrategyManagerTest is Test {
         StrategyManager.VolatilityRegime memory regime = strategyManager.getRegime(999);
         assertEq(regime.regimeId, 0);
         assertFalse(regime.exists);
+    }
+
+    // ==================== IReceiver / onReport Tests ====================
+
+    function test_OnReport_Success() public {
+        uint256 regimeId = 1;
+        uint256 spread = 150;
+        uint256 multiplier = 75;
+
+        // Call onReport as forwarder
+        vm.prank(address(0x999));
+        vm.expectEmit(true, false, false, true);
+        emit VolatilityRegimeChanged(regimeId, spread, multiplier);
+        
+        strategyManager.onReport("", abi.encode(regimeId, spread, multiplier));
+
+        // Verify regime was set
+        StrategyManager.VolatilityRegime memory regime = strategyManager.getCurrentRegime();
+        assertEq(regime.regimeId, regimeId);
+        assertEq(regime.fortressSpreadBps, spread);
+        assertEq(regime.maxMultiplier, multiplier);
+        assertTrue(regime.exists);
+    }
+
+    function test_OnReport_RevertInvalidSender() public {
+        // Call onReport as non-forwarder should revert
+        vm.prank(strategist);
+        vm.expectRevert(abi.encodeWithSelector(
+            bytes4(keccak256("InvalidSender(address,address)")),
+            strategist,
+            address(0x999)
+        ));
+        strategyManager.onReport("", abi.encode(1, 100, 100));
+    }
+
+    function test_OnReport_MultipleRegimes() public {
+        // Regime 1 via onReport
+        vm.prank(address(0x999));
+        strategyManager.onReport("", abi.encode(1, 100, 100));
+
+        // Regime 2 via onReport
+        vm.prank(address(0x999));
+        strategyManager.onReport("", abi.encode(2, 200, 50));
+
+        StrategyManager.VolatilityRegime memory current = strategyManager.getCurrentRegime();
+        assertEq(current.regimeId, 2);
+        assertEq(current.fortressSpreadBps, 200);
+        assertEq(current.maxMultiplier, 50);
+    }
+
+    function test_SupportsInterface() public view {
+        // IReceiver interface ID
+        bytes4 receiverInterface = type(IReceiver).interfaceId;
+        assertTrue(strategyManager.supportsInterface(receiverInterface));
+
+        // ERC165 interface ID
+        bytes4 erc165Interface = 0x01ffc9a7;
+        assertTrue(strategyManager.supportsInterface(erc165Interface));
+    }
+
+    function test_ForwarderAddressGetter() public view {
+        assertEq(strategyManager.getForwarderAddress(), address(0x999));
     }
 }

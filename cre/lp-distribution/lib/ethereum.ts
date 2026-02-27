@@ -12,22 +12,19 @@ import type { Config, EvmConfig, DistributionDestination } from "../types";
 
 export const withRetry = async <T>(
   fn: () => Promise<T>,
-  maxAttempts = 3
+  maxRetries = 3
 ): Promise<T> => {
   let lastError: Error | undefined;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  
+  for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt < maxAttempts) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      // Continue to next retry (no delay in CRE WASM environment)
     }
   }
-
+  
   throw lastError;
 };
 

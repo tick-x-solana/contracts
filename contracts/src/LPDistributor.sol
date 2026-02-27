@@ -5,11 +5,12 @@ import {Roles} from "./Roles.sol";
 import {PoolReserve} from "./PoolReserve.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress} from "./Errors.sol";
 import {CCIPDistributionRequested} from "./Events.sol";
+import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
 
 /// @title LPDistributor
 /// @notice LP distribution signaling and cross-chain distribution coordination
 /// @dev Mock CCIP integration for PoC - emits events instead of actual bridge calls
-contract LPDistributor {
+contract LPDistributor is ReceiverTemplate {
     /// @notice Reference to the roles contract for access control
     Roles public immutable roles;
 
@@ -35,14 +36,15 @@ contract LPDistributor {
     /// @notice Total number of distribution requests
     uint256 public requestCount;
 
-    modifier onlyOwner() {
+    modifier onlyOwner() override {
         if (msg.sender != roles.owner()) revert Unauthorized(msg.sender);
         _;
     }
 
     /// @param _roles Address of the Roles contract
     /// @param _poolReserve Address of the PoolReserve contract
-    constructor(address _roles, address _poolReserve) {
+    /// @param _forwarder Address of the Chainlink Forwarder contract
+    constructor(address _roles, address _poolReserve, address _forwarder) ReceiverTemplate(_forwarder) {
         if (_roles == address(0)) revert ZeroAddress();
         if (_poolReserve == address(0)) revert ZeroAddress();
         roles = Roles(_roles);
@@ -61,6 +63,20 @@ contract LPDistributor {
         uint64 dstChainSelector,
         address receiver
     ) external onlyOwner {
+        _queueDistribution(epochId, amount, dstChainSelector, receiver);
+    }
+
+    /// @notice Internal function to queue a distribution request
+    /// @param epochId Unique epoch identifier (must be monotonically increasing)
+    /// @param amount Amount to distribute
+    /// @param dstChainSelector CCIP destination chain selector
+    /// @param receiver Receiver address on destination chain
+    function _queueDistribution(
+        uint256 epochId,
+        uint256 amount,
+        uint64 dstChainSelector,
+        address receiver
+    ) internal {
         if (epochId <= latestEpochId) revert InvalidAmount();
         if (amount == 0) revert InvalidAmount();
         if (receiver == address(0)) revert ZeroAddress();
@@ -83,6 +99,19 @@ contract LPDistributor {
 
         // Allocate reserve from PoolReserve
         poolReserve.allocateReserveToLPDistributor(amount, receiver);
+    }
+
+    /// @notice Process report from Chainlink workflow
+    /// @param report The raw report data containing distribution parameters
+    function _processReport(bytes calldata report) internal override {
+        (
+            uint256 epochId,
+            uint256 amount,
+            uint64 dstChainSelector,
+            address receiver
+        ) = abi.decode(report, (uint256, uint256, uint64, address));
+
+        _queueDistribution(epochId, amount, dstChainSelector, receiver);
     }
 
     /// @notice Get a stored distribution request by epoch ID

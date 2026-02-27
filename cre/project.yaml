@@ -5,7 +5,12 @@
 local-simulation:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
-      url: https://0xrpc.io/sep
+      url: https://eth-sepolia.api.onfinality.io/public
+
+sepolia-real:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://eth-sepolia.api.onfinality.io/public
 
 staging:
   cre-cli:

@@ -12,6 +12,9 @@
 //
 // Trigger: cron (daily at 00:00 UTC)
 // Contract: LPDistributor.queueDistribution(...)
+//
+// REAL CONTRACT: 0x32BC43d36EE16BaB6765A4447ED48DC3210969EC (Sepolia)
+// To use real contract: cre workflow simulate lp-distribution --target sepolia-real --broadcast
 
 import {
   CronCapability,

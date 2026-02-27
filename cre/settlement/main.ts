@@ -12,6 +12,9 @@
 //
 // Trigger: cron (*/15 * * * *)
 // Contract: Settlement.commitSettlementBatch(...)
+//
+// REAL CONTRACT: 0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6 (Sepolia)
+// To use real contract: cre workflow simulate settlement --target sepolia-real --broadcast
 
 import {
   CronCapability,
