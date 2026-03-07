@@ -16,7 +16,6 @@ This project implements 5 CRE workflows that interact with the Tapl smart contra
 | **Price Integrity** | 15m cron | OHLC candle comparison with pass/fail reporting | ✅ Complete |
 | **Settlement** | 15m cron | Batch settlement commitment | ✅ Complete |
 | **Pool Solvency PoR** | Daily cron | Proof-of-reserve solvency reporting | ✅ Complete |
-| **LP Distribution** | Daily cron | LP reward distribution queueing | ✅ Complete |
 | **Strategy Rebalance** | 15m cron | Volatility regime parameter updates | ✅ Complete |
 
 ## Project Structure
