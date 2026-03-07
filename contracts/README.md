@@ -1,6 +1,6 @@
-# Tap.fun × Chainlink - Smart Contracts
+# Tapl × Chainlink - Smart Contracts
 
-Smart contracts for the Tap.fun prediction gaming platform with Chainlink integration.
+Smart contracts for the Tapl prediction gaming platform with Chainlink integration.
 
 ## Overview
 

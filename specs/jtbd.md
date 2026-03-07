@@ -204,7 +204,7 @@ sequenceDiagram
 | --- | --- | --- |
 | 2.1 | User taps cell (One-touch bet) | Frontend sends User ID, Band, Window, Amount to Backend |
 | 2.2 | System locks bet at next oracle tick | Lock within ≤500ms. Snapshot the multiplier to Chainlink Data Feeds |
-| 2.3 | Price Integrity Proof runs (every 15 min) | Compare [Tap.fun](http://Tap.fun) vs Binance vs Chainlink, publish proof |
+| 2.3 | Price Integrity Proof runs (every 15 min) | Compare [Tapl](http://Tapl) vs Binance vs Chainlink, publish proof |
 | 2.4 | If deviation > 50bps, proof published with `withinTolerance = false` | Full transparency, system alerts on anomalies |
 | 2.5 | Bet confirmation pushed — tx hash, locked multiplier, window start/end | Toast notification + bet card appears in sidebar |
 | 2.6 | Frontend transitions to "Watch" state with live countdown | Grid cell pulses, countdown overlay starts |
@@ -375,7 +375,7 @@ sequenceDiagram
 <aside>
 💡
 
-**What makes someone switch to [Tap.fun](http://Tap.fun)?**
+**What makes someone switch to [Tapl](http://Tapl)?**
 
 </aside>
 

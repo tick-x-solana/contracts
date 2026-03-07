@@ -3,7 +3,7 @@
 <aside>
 🎬
 
-[**tap.fun](http://tap.fun) × Chainlink — Demo Video Script** · Mode 20 (Jackpot) · BTC/USDT · **Runtime: 3:20** · Hand-off ready for video editor
+[**Tapl](http://Tapl) × Chainlink — Demo Video Script** · Mode 20 (Jackpot) · BTC/USDT · **Runtime: 3:20** · Hand-off ready for video editor
 
 </aside>
 
@@ -31,7 +31,7 @@
 
 ### [SCREEN]
 
-Black → BTC ticker counting fast → grid cells flash → finger taps → WIN explosion → [tap.fun](http://tap.fun) + Chainlink logos
+Black → BTC ticker counting fast → grid cells flash → finger taps → WIN explosion → [Tapl](http://Tapl) + Chainlink logos
 
 ### [UI SKETCH]
 
@@ -41,7 +41,7 @@ Black → BTC ticker counting fast → grid cells flash → finger taps → WIN 
 │   [2.1x] [3.4x] [5.6x] [8.2x] │  ← grid cells flash
 │   [4.7x] [7.1x] [12x] [19.3x] │
 │      ████ TAP ████  → 💥 WIN   │
-│    tap.fun  ×  ⛓️ Chainlink    │  ← logos
+│    Tapl  ×  ⛓️ Chainlink    │  ← logos
 └─────────────────────────────────┘
 ```
 
@@ -56,7 +56,7 @@ Black → BTC ticker counting fast → grid cells flash → finger taps → WIN 
 - [0:00–0:02] Black → BTC price ticker appears, counting rapidly
 - [0:02–0:04] Grid cells flash in sequence with multipliers
 - [0:04–0:06] Finger taps a cell → WIN explosion
-- [0:06–0:08] [tap.fun](http://tap.fun) × Chainlink logos fade in
+- [0:06–0:08] [Tapl](http://Tapl) × Chainlink logos fade in
 
 ### [TRANSITION]  Smash cut → Scene 1
 
@@ -99,7 +99,7 @@ Full app view. Left: BTC/USDT live price line. Right: multiplier grid. Bottom: w
 
 | **Time** | **Voice** | **Subtitle** | **On Screen** |
 | --- | --- | --- | --- |
-| [0:08–0:14] | *"This is [tap.fun](http://tap.fun). Live BTC price, streamed from Chainlink."* | `BTC/USDT · Live from Chainlink` | Zoom on price top-left, pulse Chainlink badge (remove Binance badge) |
+| [0:08–0:14] | *"This is [Tapl](http://Tapl). Live BTC price, streamed from Chainlink."* | `BTC/USDT · Live from Chainlink` | Zoom on price top-left, pulse Chainlink badge (remove Binance badge) |
 | [0:14–0:22] | *"The grid. Each row is a $20 price band. Each column is a 5-second window."* | `Each cell = $20 band × 5s window` | Pan to grid, highlight column [5–10s], highlight row [$96,240–260] |
 | [0:22–0:28] | *"Every cell is a prediction. The number is your multiplier. Bet $1 on 14x — win $14."* | `Multiplier = your payout · Bet $1 on 14x → win $14` | Hover on 14.1x cell, tooltip: Band + Window + Multiplier |
 | [0:28–0:40] | *"Near the price? Low multiplier, high chance. Far away? 100x — but BTC needs to move fast."* | `Near spot: ~1.2x · Far: up to 100x` | Glow near-spot row (1.2x) → glow far row (100x), side-by-side |
@@ -304,7 +304,7 @@ Blueprint/dark mode. Architecture diagram builds piece by piece.
 | --- | --- | --- | --- |
 | [1:55–2:00] | *"Chainlink CRE runs five autonomous workflows. Let's start with the most important."* | `⛓️ 5 Chainlink CRE Workflows` | 5-panel layout appears → Panel 1 zooms to full screen |
 | [2:00–2:12] | *"Every 15 minutes, a CRE workflow fetches BTC from Binance API. Then reads Chainlink's BTC/USD Data Feed. Compares them — computes deviation — publishes a signed proof on-chain."* | `Price Integrity: Binance API → Chainlink Oracle → deviation → proof on-chain every 15min` | Animate: Binance → Chainlink → comparison → proof struct fields appear |
-| [2:12–2:20] | *"This proof is public. Anyone can call the contract and verify: is [tap.fun](http://tap.fun) using the real price? On-chain, every 15 minutes. No trust required."* | `Public proof · Anyone can verify · getLatestProof() → deviation: 3.8 bps ✅` | PriceProof struct highlighted, "Anyone can verify ✅" stamp |
+| [2:12–2:20] | *"This proof is public. Anyone can call the contract and verify: is [Tapl](http://Tapl) using the real price? On-chain, every 15 minutes. No trust required."* | `Public proof · Anyone can verify · getLatestProof() → deviation: 3.8 bps ✅` | PriceProof struct highlighted, "Anyone can verify ✅" stamp |
 | [2:20–2:27] | *"Workflow two — Fair Settlement. When your window ends, CRE reads OHLC candles, determines WIN or LOSS, triggers payout. Autonomous."* | `WF2: Fair Settlement — autonomous bet resolution via CRE` | Camera pulls back, Panel 2 lights up with flow animation + ✅ |
 | [2:27–2:34] | *"Three — Pool Solvency. Every 60 seconds, CRE checks pool balance versus outstanding liabilities. Published on-chain. Always auditable."* | `WF3: Pool PoR — solvency verified every 60s, on-chain` | Panel 3 lights up + ✅ |
 | [2:34–2:40] | *"Four — LP Distribution. House profits get split pro-rata and distributed via CCIP — LPs can be on any chain."* | `WF4: LP Distribution — cross-chain payouts via CCIP` | Panel 4 lights up + ✅ |
@@ -328,13 +328,13 @@ Blueprint/dark mode. Architecture diagram builds piece by piece.
 
 ### [SCREEN]
 
-Dark background. [tap.fun](http://tap.fun) × Chainlink logos. Stats fade in. CTA.
+Dark background. [Tapl](http://Tapl) × Chainlink logos. Stats fade in. CTA.
 
 ### [UI SKETCH]
 
 ```jsx
 ┌──────────────────────────────────┐
-│         tap.fun × ⛓️            │
+│         Tapl × ⛓️            │
 │                                  │
 │    📊 BTC/USDT from Binance     │
 │    ⛓️ Settled by Chainlink CRE  │
@@ -351,7 +351,7 @@ Dark background. [tap.fun](http://tap.fun) × Chainlink logos. Stats fade in. CT
 
 | **Time** | **Voice** | **Subtitle** | **On Screen** |
 | --- | --- | --- | --- |
-| [2:50–2:57] | *"[tap.fun](http://tap.fun). Predict BTC in five seconds. Settled by Chainlink. Verified on-chain."* | `Predict. Verify. Win.` | Logos → stats fade in (0.5s each) → tagline |
+| [2:50–2:57] | *"[Tapl](http://Tapl). Predict BTC in five seconds. Settled by Chainlink. Verified on-chain."* | `Predict. Verify. Win.` | Logos → stats fade in (0.5s each) → tagline |
 | [2:57–3:00] | *(silence)* | *(none)* | CTA buttons glow: [Try the Demo] [Read Docs] |
 
 ---
@@ -394,7 +394,7 @@ Dark background. [tap.fun](http://tap.fun) × Chainlink logos. Stats fade in. CT
 
 ### Assets Needed
 
-- [tap.fun](http://tap.fun) logo (dark + light)
+- [Tapl](http://Tapl) logo (dark + light)
 - Chainlink logo + ⛓️ icon
 - Binance logo (small badge)
 - Sound pack (oracle tick, lock click, win chime)

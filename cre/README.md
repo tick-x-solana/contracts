@@ -1,6 +1,6 @@
-# Tap.fun CRE Workflows
+# Tapl CRE Workflows
 
-Chainlink Runtime Environment (CRE) workflows for the Tap.fun prediction gaming platform.
+Chainlink Runtime Environment (CRE) workflows for the Tapl prediction gaming platform.
 
 ## 📚 Documentation
 
@@ -9,7 +9,7 @@ Chainlink Runtime Environment (CRE) workflows for the Tap.fun prediction gaming 
 
 ## Overview
 
-This project implements 5 CRE workflows that interact with the Tap.fun smart contracts:
+This project implements 5 CRE workflows that interact with the Tapl smart contracts:
 
 | Workflow | Trigger | Purpose | Status |
 |----------|---------|---------|--------|

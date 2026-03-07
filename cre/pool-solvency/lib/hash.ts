@@ -1,5 +1,5 @@
 // ==========================================================================
-// Deterministic Hashing Utilities for Tap.fun CRE Workflows
+// Deterministic Hashing Utilities for Tapl CRE Workflows
 // ==========================================================================
 
 import { keccak256, toHex, encodeAbiParameters, parseAbiParameters } from "viem";

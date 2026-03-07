@@ -1,5 +1,5 @@
 // ==========================================================================
-// Configuration Management for Tap.fun CRE Workflows
+// Configuration Management for Tapl CRE Workflows
 // ==========================================================================
 
 import { Config, EvmConfig } from "./types";

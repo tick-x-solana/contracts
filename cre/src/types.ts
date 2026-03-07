@@ -1,5 +1,5 @@
 // ==========================================================================
-// Shared Types and Schemas for Tap.fun CRE Workflows
+// Shared Types and Schemas for Tapl CRE Workflows
 // ==========================================================================
 
 import { z } from "zod";

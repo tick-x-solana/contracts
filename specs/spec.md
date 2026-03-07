@@ -5,7 +5,7 @@
 
 </aside>
 
-**Idea Pool:** [[Tap.fun](http://Tap.fun) × Chainlink](https://www.notion.so/Tap-fun-Chainlink-cc7fe1e1fdb44b0b9d992251520581dd?pvs=21) · **Sprint:** 4 days · **Mode:** $20 band / 5s window · **Based on:** [Euphoria](https://euphoria.finance/) tap-trading
+**Idea Pool:** [[Tapl](http://Tapl) × Chainlink](https://www.notion.so/Tap-fun-Chainlink-cc7fe1e1fdb44b0b9d992251520581dd?pvs=21) · **Sprint:** 4 days · **Mode:** $20 band / 5s window · **Based on:** [Euphoria](https://euphoria.finance/) tap-trading
 
 ---
 
@@ -15,7 +15,7 @@
 - **Chainlink Data Streams** via WebSocket as the price source (1s OHLC or equivalent) · used for verification and settlement
 - **Chainlink CRE** runs 5 autonomous workflows: **Price Integrity Proof** (on-chain every 15min), Fair Settlement, Pool Solvency PoR, LP Distribution (CCIP), Strategy Rebalance
 - **Multipliers update live** (1.2x near-spot → 100x far) — Brownian Bridge + Fortress engine
-- **Provably fair** — every 15 min, CRE publishes a signed proof that [**tap.fun](http://tap.fun)'s internal price matches Chainlink reference pricing within tolerance** (public verification on-chain).
+- **Provably fair** — every 15 min, CRE publishes a signed proof that [**Tapl](http://Tapl)'s internal price matches Chainlink reference pricing within tolerance** (public verification on-chain).
 
 ### Jobs to be Done
 
@@ -62,7 +62,7 @@ Chainlink Data Streams (WebSocket) → Volatility Detection (EWMA + Hawkes) → 
 - [Blip Market — ETHGlobal winner](https://ethglobal.com/showcase/blip-market-8edo8) (tap-trading | euphoria)
 - [Live Demo](http://tap-trading-b1td.vercel.app/) · [Deck](https://docs.google.com/presentation/d/1QFmjafvQLFD6aTSC507nIJfpJyFEjNFzKDXpeMgZp7w/edit)
     
-    [Tap.fun_Prediction_Gaming_Infrastructure_with_Provably_Fair_Pricing_&_Institutional-Grade_Reliability.pdf](attachment:b62ae25b-2271-4243-aca2-35f4fa494efd:Tap.fun_Prediction_Gaming_Infrastructure_with_Provably_Fair_Pricing__Institutional-Grade_Reliability.pdf)
+    [Tapl_Prediction_Gaming_Infrastructure_with_Provably_Fair_Pricing_&_Institutional-Grade_Reliability.pdf](attachment:b62ae25b-2271-4243-aca2-35f4fa494efd:Tapl_Prediction_Gaming_Infrastructure_with_Provably_Fair_Pricing__Institutional-Grade_Reliability.pdf)
     
 - [Brownian Bridge Barrier Lemma](https://www.csie.ntu.edu.tw/~lyuu/finance1/2015/20150520.pdf) · [Broadie-Glasserman-Kou](https://www.columbia.edu/~sk75/mfBGK.pdf)
 - [EWMA variance](https://arch.readthedocs.io/en/latest/univariate/generated/arch.univariate.EWMAVariance.html) · [CVaR — Rockafellar-Uryasev](https://www.pacca.info/public/files/docs/public/finance/Active%20Risk%20Management/Uryasev%20Rockafellar-%20Optimization%20CVaR.pdf)

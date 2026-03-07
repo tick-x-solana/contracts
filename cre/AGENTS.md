@@ -1,6 +1,6 @@
 # CRE Workflow Development Guide
 
-This document contains best practices and lessons learned from implementing CRE workflows for the tap.fun x Chainlink project.
+This document contains best practices and lessons learned from implementing CRE workflows for the Tapl x Chainlink project.
 
 ## Table of Contents
 

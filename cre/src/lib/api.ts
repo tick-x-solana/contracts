@@ -1,5 +1,5 @@
 // ==========================================================================
-// App API Client for Tap.fun CRE Workflows
+// App API Client for Tapl CRE Workflows
 // Includes mock implementations for testing
 // ==========================================================================
 

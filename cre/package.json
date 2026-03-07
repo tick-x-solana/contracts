@@ -1,7 +1,7 @@
 {
   "name": "tapfun-cre-workflows",
   "version": "1.0.0",
-  "description": "Chainlink Runtime Environment workflows for Tap.fun prediction gaming",
+  "description": "Chainlink Runtime Environment workflows for Tapl prediction gaming",
   "main": "dist/main.js",
   "private": true,
   "scripts": {

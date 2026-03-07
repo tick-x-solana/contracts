@@ -1,6 +1,6 @@
-# Tap.fun x Chainlink
+# Tapl x Chainlink
 
-Smart contract and Chainlink Runtime Environment infrastructure for the Tap.fun BTC tap-trading proof of concept.
+Smart contract and Chainlink Runtime Environment infrastructure for the Tapl BTC tap-trading proof of concept.
 
 This repository does not contain the app frontend or backend. Its scope is:
 - EVM smart contracts for onchain verification, settlement batching, solvency reporting, LP reserve management, and strategy updates
@@ -35,12 +35,12 @@ This repository does not contain the app frontend or backend. Its scope is:
 
 - App backend owns gameplay, batching, and offchain business state.
 - CRE workflows consume app API payloads on schedule or by HTTP trigger.
-- CRE signs and submits reports/actions into Tap.fun consumer contracts.
+- CRE signs and submits reports/actions into Tapl consumer contracts.
 - Contracts emit canonical events for backend indexing and audit.
 
 ```mermaid
 flowchart LR
-  A["Tap.fun App API"] --> B["Chainlink CRE Workflows"]
+  A["Tapl App API"] --> B["Chainlink CRE Workflows"]
   C["Chainlink Reference Data"] --> B
 
   B --> D["PriceIntegrity.sol"]
@@ -101,7 +101,7 @@ sequenceDiagram
 
 ## Repository Scope
 
-- `contracts/`: Foundry project for Tap.fun consumer contracts and deployment scripts
+- `contracts/`: Foundry project for Tapl consumer contracts and deployment scripts
 - `cre/`: Chainlink CRE workflow project
 - `specs/`: implementation, workflow, indexing, and integration specs
 
@@ -165,7 +165,7 @@ Key workflow entrypoints:
 
 ### 2. CRE-Compatible Consumer Contracts
 
-Contracts inherit Tap.fun receiver infrastructure so CRE can write to them through a forwarder/report flow.
+Contracts inherit Tapl receiver infrastructure so CRE can write to them through a forwarder/report flow.
 
 Key consumer contracts:
 - `contracts/src/PriceIntegrity.sol`
@@ -284,5 +284,5 @@ cre workflow simulate pool-solvency --target local-simulation
 ## References
 
 - [Chainlink CRE Docs](https://docs.chain.link/cre)
-- [Tap.fun Product Spec](./specs/spec.md)
+- [Tapl Product Spec](./specs/spec.md)
 - [CRE Workflow Specs](./specs/cre-workflows/README.md)

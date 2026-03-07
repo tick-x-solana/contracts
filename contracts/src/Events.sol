@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-// @title Events - Shared events for all Tap.fun contracts
+// @title Events - Shared events for all Tapl contracts
 // @notice This file contains all events used across the protocol
 
 // Price integrity events

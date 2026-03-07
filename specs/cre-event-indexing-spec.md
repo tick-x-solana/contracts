@@ -6,7 +6,7 @@ Index all smart-contract events that represent successful CRE workflow writes so
 
 ## Scope
 
-- Chain: target EVM chain(s) where Tap.fun contracts are deployed.
+- Chain: target EVM chain(s) where Tapl contracts are deployed.
 - Contracts:
   - `PriceIntegrity`
   - `Settlement`

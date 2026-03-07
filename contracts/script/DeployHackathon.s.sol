@@ -11,7 +11,7 @@ import {LPDistributor} from "../src/LPDistributor.sol";
 import {StrategyManager} from "../src/StrategyManager.sol";
 
 /// @title DeployHackathon
-/// @notice Deployment script for Tap.fun x Chainlink hackathon PoC
+/// @notice Deployment script for Tapl x Chainlink hackathon PoC
 /// @dev Run with: forge script script/DeployHackathon.s.sol --rpc-url <RPC_URL> --broadcast
 contract DeployHackathon is Script {
     // Deployed contract instances

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-// @title Errors - Shared custom errors for all Tap.fun contracts
+// @title Errors - Shared custom errors for all Tapl contracts
 // @notice This file contains all custom errors used across the protocol
 
 // Access control errors

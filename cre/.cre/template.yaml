@@ -1,7 +1,7 @@
 kind: starter-template
 id: tapfun-cre-workflows
-title: "Tap.fun CRE Workflows"
-description: "CRE workflows for Tap.fun prediction gaming platform"
+title: "Tapl CRE Workflows"
+description: "CRE workflows for Tapl prediction gaming platform"
 language: typescript
 category: prediction-markets
 tags: [tapfun, prediction-gaming, cre]
