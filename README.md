@@ -273,14 +273,6 @@ cre workflow simulate pool-solvency --target local-simulation
 - Detailed CRE workflow behavior:
   - `specs/cre-workflows/README.md`
 
-## PoC Limitations
-
-- Trusted app API remains a critical source of truth for CRE inputs
-- No real CCIP bridge execution in this repo
-- Settlement proofs are batch commitments, not full onchain claim verification
-- Trader accounting in `PoolReserve.sol` is intentionally simplified for hackathon scope
-- Architecture is optimized for demo submission speed, not production hardening
-
 ## References
 
 - [Chainlink CRE Docs](https://docs.chain.link/cre)
