@@ -31,6 +31,53 @@ This repository does not contain the app frontend or backend. Its scope is:
 | Security posture | PoC | Trusted app API / CRE assumptions remain |
 | Production readiness | Not targeted | Mocked CCIP, simplified trader accounting, no upgrade path |
 
+## Chainlink Usage
+
+This repo uses Chainlink in two ways:
+
+### 1. Chainlink Runtime Environment
+
+- CRE workflows live under `cre/`
+- Each workflow uses the CRE SDK for:
+  - cron or HTTP triggers
+  - deterministic workflow execution
+  - EVM onchain reads
+  - signed report submission
+
+Key workflow entrypoints:
+- `cre/price-integrity/main.ts`
+- `cre/settlement/main.ts`
+- `cre/pool-solvency/main.ts`
+- `cre/strategy-rebalance/main.ts`
+
+### 2. CRE-Compatible Consumer Contracts
+
+Contracts inherit Tapl receiver infrastructure so CRE can write to them through a forwarder/report flow.
+
+Key consumer contracts:
+- `contracts/src/PriceIntegrity.sol`
+- `contracts/src/Settlement.sol`
+- `contracts/src/PoolReserve.sol`
+- `contracts/src/StrategyManager.sol`
+
+## Deployed Contracts
+
+Current deployment summary in `deployments-v1.txt`:
+
+| Contract | Address |
+|---|---|
+| `Roles` | `0x23B8F26A359C036C69BfaF28AE765D3d975f055d` |
+| `PriceIntegrity` | `0x60430364eBC71ac11720f012756ceA2c294c50de` |
+| `PoolReserve` | `0x0b7400e10fd916A7B9eEe8981532aF9f38255bAf` |
+| `Settlement` | `0xEDD391FDa28993287Df301485ABF72865dee5050` |
+| `StrategyManager` | `0x1CB5b9fc0F24D26366aA8F2aeFE875fD356f4616` |
+| `Asset (USDT on Sepolia)` | `0x779877A7B0D9E8603169DdbD7836e478b4624789` |
+| `Forwarder` | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` |
+
+Network:
+- Sepolia
+- RPC: `https://eth-sepolia.api.onfinality.io/public`
+
 ## Architecture Overview
 
 - App backend owns gameplay, batching, and offchain business state.
@@ -143,53 +190,6 @@ Detailed workflow specs live in `specs/cre-workflows/`.
 - Price integrity is stored every 15 minutes
 - Settlement is batch committed every 15 minutes
 - Solvency proof-of-reserve is reported daily in the current PoC design
-
-## Chainlink Usage
-
-This repo uses Chainlink in two ways:
-
-### 1. Chainlink Runtime Environment
-
-- CRE workflows live under `cre/`
-- Each workflow uses the CRE SDK for:
-  - cron or HTTP triggers
-  - deterministic workflow execution
-  - EVM onchain reads
-  - signed report submission
-
-Key workflow entrypoints:
-- `cre/price-integrity/main.ts`
-- `cre/settlement/main.ts`
-- `cre/pool-solvency/main.ts`
-- `cre/strategy-rebalance/main.ts`
-
-### 2. CRE-Compatible Consumer Contracts
-
-Contracts inherit Tapl receiver infrastructure so CRE can write to them through a forwarder/report flow.
-
-Key consumer contracts:
-- `contracts/src/PriceIntegrity.sol`
-- `contracts/src/Settlement.sol`
-- `contracts/src/PoolReserve.sol`
-- `contracts/src/StrategyManager.sol`
-
-## Deployed Contracts
-
-Current deployment summary in `deployments-v1.txt`:
-
-| Contract | Address |
-|---|---|
-| `Roles` | `0x23B8F26A359C036C69BfaF28AE765D3d975f055d` |
-| `PriceIntegrity` | `0x60430364eBC71ac11720f012756ceA2c294c50de` |
-| `PoolReserve` | `0x0b7400e10fd916A7B9eEe8981532aF9f38255bAf` |
-| `Settlement` | `0xEDD391FDa28993287Df301485ABF72865dee5050` |
-| `StrategyManager` | `0x1CB5b9fc0F24D26366aA8F2aeFE875fD356f4616` |
-| `Asset (USDT on Sepolia)` | `0x779877A7B0D9E8603169DdbD7836e478b4624789` |
-| `Forwarder` | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` |
-
-Network:
-- Sepolia
-- RPC: `https://eth-sepolia.api.onfinality.io/public`
 
 ## Repository Structure
 
