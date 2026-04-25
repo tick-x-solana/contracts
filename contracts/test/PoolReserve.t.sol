@@ -4,29 +4,23 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {PoolReserve} from "../src/PoolReserve.sol";
-import {
-    LPDeposited,
-    LPWithdrawn,
-    TraderDeposited,
-    TraderClaimed,
-    SolvencyReported,
-    ReserveAllocatedToDistributor
-} from "../src/Events.sol";
-import {Roles} from "../src/Roles.sol";
+import {PoolReserveProxy} from "../src/PoolReserveProxy.sol";
+import {ISignatureTransfer} from "../src/interfaces/ISignatureTransfer.sol";
+import {TraderDeposited, TraderClaimed} from "../src/Events.sol";
 import {
     Unauthorized,
     InvalidAmount,
     ZeroAddress,
-    InsufficientShares,
-    SolvencyRatioTooLow
+    InsufficientBalance,
+    InvalidSignature,
+    SignatureExpired
 } from "../src/Errors.sol";
-import {IReceiver} from "../src/interfaces/IReceiver.sol";
 
 contract MockERC20 is IERC20 {
     string public name = "Mock USDT";
     string public symbol = "mUSDT";
     uint8 public decimals = 18;
-    
+
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -60,574 +54,282 @@ contract MockERC20 is IERC20 {
         emit Transfer(from, to, amount);
         return true;
     }
+}
 
+contract PoolReserveV2 is PoolReserve {
+    function version() external pure returns (uint256) {
+        return 2;
+    }
+}
 
+contract MockPermit2 {
+    function permitTransferFrom(
+        ISignatureTransfer.PermitTransferFrom calldata permit,
+        ISignatureTransfer.SignatureTransferDetails calldata transferDetails,
+        address owner,
+        bytes calldata
+    ) external {
+        MockERC20(permit.permitted.token).transferFrom(owner, transferDetails.to, transferDetails.requestedAmount);
+    }
 }
 
 contract PoolReserveTest is Test {
     PoolReserve public poolReserve;
-    Roles public roles;
+    PoolReserve public implementation;
+    PoolReserveProxy public proxy;
     MockERC20 public asset;
-    
-    address public owner = address(1);
-    address public reporter = address(2);
-    address public settler = address(3);
-    address public distributor = address(4);
-    address public randomUser = address(99);
-    
-    address public lp1 = address(10);
-    address public lp2 = address(11);
-    address public trader1 = address(20);
-    address public trader2 = address(21);
+    MockPermit2 public permit2;
+
+    uint256 internal ownerKey = 0xA11CE;
+    uint256 internal signerKey = 0xB0B;
+    uint256 internal otherSignerKey = 0xCAFE;
+
+    address public owner;
+    address public claimSigner;
+    address public trader = address(0x114);
+    address public randomUser = address(0x199);
 
     uint256 constant INITIAL_MINT = 1_000_000e18;
-    uint256 constant DEPOSIT_AMOUNT = 100_000e18;
 
     function setUp() public {
-        // Deploy mock asset
+        owner = vm.addr(ownerKey);
+        claimSigner = vm.addr(signerKey);
         asset = new MockERC20();
-        
-        // Deploy roles
-        vm.prank(owner);
-        roles = new Roles(owner, reporter, settler, address(0), distributor);
-        
-        // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
-        
-        // Mint tokens to test addresses
-        asset.mint(lp1, INITIAL_MINT);
-        asset.mint(lp2, INITIAL_MINT);
-        asset.mint(trader1, INITIAL_MINT);
-        asset.mint(trader2, INITIAL_MINT);
+        permit2 = new MockPermit2();
+        vm.etch(0x000000000022D473030F116dDEE9F6B43aC78BA3, address(permit2).code);
+
+        implementation = new PoolReserve();
+        proxy = new PoolReserveProxy(
+            address(implementation),
+            abi.encodeCall(PoolReserve.initialize, (owner, address(asset), claimSigner))
+        );
+        poolReserve = PoolReserve(address(proxy));
+
+        asset.mint(trader, INITIAL_MINT);
         asset.mint(randomUser, INITIAL_MINT);
     }
 
-    // ==================== Constructor Tests ====================
-
-    function test_ConstructorSetsRolesAndAsset() public view {
-        assertEq(address(poolReserve.roles()), address(roles));
+    function test_InitializeSetsState() public view {
         assertEq(address(poolReserve.asset()), address(asset));
-        assertEq(poolReserve.totalLPShares(), 0);
-        assertEq(poolReserve.latestSolvencyEpochId(), 0);
+        assertEq(poolReserve.owner(), owner);
+        assertEq(poolReserve.claimSigner(), claimSigner);
+        assertEq(poolReserve.totalTraderDeposits(), 0);
     }
 
-    function test_ConstructorRevertsOnZeroRoles() public {
-        vm.expectRevert(ZeroAddress.selector);
-        new PoolReserve(address(0), address(asset), address(0x999));
+    function test_InitializeCannotRunTwice() public {
+        vm.expectRevert(bytes4(keccak256("InvalidInitialization()")));
+        poolReserve.initialize(owner, address(asset), claimSigner);
     }
 
-    function test_ConstructorRevertsOnZeroAsset() public {
-        vm.expectRevert(ZeroAddress.selector);
-        new PoolReserve(address(roles), address(0), address(0x999));
-    }
-
-    // ==================== LP Deposit Tests ====================
-
-    function test_FirstLPDeposit() public {
-        uint256 depositAmount = 1000e18;
-        
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), depositAmount);
-        
-        vm.expectEmit(true, false, false, true);
-        emit LPDeposited(lp1, depositAmount, depositAmount);
-        
-        poolReserve.depositLP(depositAmount);
-        vm.stopPrank();
-
-        assertEq(poolReserve.totalLPShares(), depositAmount);
-        assertEq(poolReserve.lpSharesOf(lp1), depositAmount);
-        assertEq(poolReserve.totalCollateral(), depositAmount);
-    }
-
-    function test_MultiLPDeposit() public {
-        // LP1 deposits first
-        uint256 deposit1 = 1000e18;
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), deposit1);
-        poolReserve.depositLP(deposit1);
-        vm.stopPrank();
-
-        // LP2 deposits same amount (should get same shares)
-        uint256 deposit2 = 1000e18;
-        vm.startPrank(lp2);
-        asset.approve(address(poolReserve), deposit2);
-        poolReserve.depositLP(deposit2);
-        vm.stopPrank();
-
-        assertEq(poolReserve.totalLPShares(), deposit1 + deposit2);
-        assertEq(poolReserve.lpSharesOf(lp1), deposit1);
-        assertEq(poolReserve.lpSharesOf(lp2), deposit2);
-    }
-
-    function test_LPDepositWithDifferentRatios() public {
-        // LP1 deposits 1000
-        uint256 deposit1 = 1000e18;
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), deposit1);
-        poolReserve.depositLP(deposit1);
-        vm.stopPrank();
-
-        // Pool now has 1000 assets, 1000 shares
-        // LP2 deposits 500 - should get 500 shares (1:1 ratio)
-        uint256 deposit2 = 500e18;
-        vm.startPrank(lp2);
-        asset.approve(address(poolReserve), deposit2);
-        poolReserve.depositLP(deposit2);
-        vm.stopPrank();
-
-        assertEq(poolReserve.lpSharesOf(lp2), deposit2);
-    }
-
-    function test_LPDepositRevertsOnZeroAmount() public {
-        vm.prank(lp1);
-        vm.expectRevert(InvalidAmount.selector);
-        poolReserve.depositLP(0);
-    }
-
-    function test_LPDepositRevertsOnInsufficientApproval() public {
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100e18);
-        
-        // Try to deposit more than approved
+    function test_ProxyConstructorRevertsOnZeroImplementation() public {
         vm.expectRevert();
-        poolReserve.depositLP(200e18);
-        vm.stopPrank();
+        new PoolReserveProxy(address(0), abi.encodeCall(PoolReserve.initialize, (owner, address(asset), claimSigner)));
     }
 
-    // ==================== LP Withdraw Tests ====================
+    function test_DepositTraderTracksBalance() public {
+        uint256 amount = 1000e18;
 
-    function test_LPWithdraw() public {
-        // Setup: LP1 deposits
-        uint256 depositAmount = 1000e18;
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositLP(depositAmount);
+        vm.startPrank(trader);
+        asset.approve(address(poolReserve), amount);
 
-        uint256 shares = poolReserve.lpSharesOf(lp1);
-        uint256 balanceBefore = asset.balanceOf(lp1);
-        
         vm.expectEmit(true, false, false, true);
-        emit LPWithdrawn(lp1, shares, depositAmount);
-        
-        poolReserve.withdrawLP(shares);
+        emit TraderDeposited(trader, amount);
+        poolReserve.depositTrader(amount);
         vm.stopPrank();
 
-        assertEq(poolReserve.lpSharesOf(lp1), 0);
-        assertEq(poolReserve.totalLPShares(), 0);
-        assertEq(asset.balanceOf(lp1), balanceBefore + depositAmount);
+        assertEq(poolReserve.traderBalanceOf(trader), amount);
+        assertEq(poolReserve.totalTraderDeposits(), amount);
+        assertEq(poolReserve.totalCollateral(), amount);
+        assertEq(asset.balanceOf(trader), INITIAL_MINT - amount);
     }
 
-    function test_LPPartialWithdraw() public {
-        // Setup: LP1 deposits
-        uint256 depositAmount = 1000e18;
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositLP(depositAmount);
-
-        uint256 sharesToWithdraw = 400e18;
-        uint256 balanceBefore = asset.balanceOf(lp1);
-        
-        poolReserve.withdrawLP(sharesToWithdraw);
-        vm.stopPrank();
-
-        assertEq(poolReserve.lpSharesOf(lp1), 600e18);
-        assertEq(poolReserve.totalLPShares(), 600e18);
-        // Should receive proportional assets
-        assertEq(asset.balanceOf(lp1), balanceBefore + 400e18);
-    }
-
-    function test_LPWithdrawRevertsOnZeroShares() public {
-        vm.prank(lp1);
-        vm.expectRevert(InvalidAmount.selector);
-        poolReserve.withdrawLP(0);
-    }
-
-    function test_LPWithdrawRevertsOnInsufficientShares() public {
-        vm.prank(lp1);
-        vm.expectRevert(InsufficientShares.selector);
-        poolReserve.withdrawLP(100e18);
-    }
-
-    // ==================== Trader Deposit Tests ====================
-
-    // ==================== Trader Deposit Tests (Demo: no balance tracking) ====================
-
-    function test_TraderDeposit() public {
-        uint256 depositAmount = 1000e18;
-        uint256 balanceBefore = asset.balanceOf(trader1);
-        
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), depositAmount);
-        
-        vm.expectEmit(true, false, false, true);
-        emit TraderDeposited(trader1, depositAmount);
-        
-        poolReserve.depositTrader(depositAmount);
-        vm.stopPrank();
-
-        // Tokens transferred to pool (no balance tracking in demo)
-        assertEq(asset.balanceOf(trader1), balanceBefore - depositAmount);
-    }
-
-    function test_TraderDepositRevertsOnZeroAmount() public {
-        vm.prank(trader1);
+    function test_DepositTraderRevertsOnZeroAmount() public {
+        vm.prank(trader);
         vm.expectRevert(InvalidAmount.selector);
         poolReserve.depositTrader(0);
     }
 
-    // ==================== Trader Claim Tests (Demo: no withdrawable check) ====================
+    function test_DepositTraderWithPermit2TracksBalanceAndEmitsTraderDeposited() public {
+        uint256 amount = 1000e18;
+        ISignatureTransfer.PermitTransferFrom memory permit = ISignatureTransfer.PermitTransferFrom({
+            permitted: ISignatureTransfer.TokenPermissions({
+                token: address(asset),
+                amount: amount
+            }),
+            nonce: 1,
+            deadline: block.timestamp + 1 hours
+        });
 
-    function test_TraderClaim() public {
-        // Setup: Trader deposits first so pool has tokens
+        vm.startPrank(trader);
+        asset.approve(address(poolReserve.PERMIT2()), amount);
+
+        vm.expectEmit(true, false, false, true);
+        emit TraderDeposited(trader, amount);
+        poolReserve.depositTraderWithPermit2(amount, hex"1234", permit);
+        vm.stopPrank();
+
+        assertEq(poolReserve.traderBalanceOf(trader), amount);
+        assertEq(poolReserve.totalTraderDeposits(), amount);
+        assertEq(poolReserve.totalCollateral(), amount);
+        assertEq(asset.balanceOf(trader), INITIAL_MINT - amount);
+    }
+
+    function test_DepositTraderWithPermit2RevertsOnWrongToken() public {
+        ISignatureTransfer.PermitTransferFrom memory permit = ISignatureTransfer.PermitTransferFrom({
+            permitted: ISignatureTransfer.TokenPermissions({
+                token: randomUser,
+                amount: 1000e18
+            }),
+            nonce: 1,
+            deadline: block.timestamp + 1 hours
+        });
+
+        vm.prank(trader);
+        vm.expectRevert(InvalidAmount.selector);
+        poolReserve.depositTraderWithPermit2(1000e18, hex"1234", permit);
+    }
+
+    function test_WithdrawTraderRequiresAdminSignature() public {
         uint256 depositAmount = 1000e18;
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositTrader(depositAmount);
+        uint256 withdrawAmount = 400e18;
+        uint256 deadline = block.timestamp + 1 hours;
 
-        // Trader claims (no withdrawable check in demo)
-        uint256 claimAmount = 500e18;
-        uint256 balanceBefore = asset.balanceOf(trader1);
-        
+        _deposit(trader, depositAmount);
+        bytes memory signature = _signClaim(signerKey, trader, withdrawAmount, deadline);
+
+        uint256 balanceBefore = asset.balanceOf(trader);
+
+        vm.prank(trader);
         vm.expectEmit(true, false, false, true);
-        emit TraderClaimed(trader1, claimAmount);
-        
-        poolReserve.claimTrader(claimAmount);
-        vm.stopPrank();
+        emit TraderClaimed(trader, withdrawAmount);
+        poolReserve.withdrawTrader(withdrawAmount, deadline, signature);
 
-        // Tokens returned to trader
-        assertEq(asset.balanceOf(trader1), balanceBefore + claimAmount);
+        assertEq(asset.balanceOf(trader), balanceBefore + withdrawAmount);
+        assertEq(poolReserve.traderBalanceOf(trader), depositAmount - withdrawAmount);
+        assertEq(poolReserve.totalTraderDeposits(), depositAmount - withdrawAmount);
+        assertEq(poolReserve.nonces(trader), 1);
     }
 
-    function test_TraderClaimRevertsOnZeroAmount() public {
-        vm.prank(trader1);
-        vm.expectRevert(InvalidAmount.selector);
-        poolReserve.claimTrader(0);
-    }
-
-    // ==================== Solvency Reporting Tests ====================
-
-    function test_ReportSolvencyPass() public {
-        uint256 epochId = 1;
-        uint256 poolBalance = 1000e18;
-        uint256 totalLiability = 500e18;
-        uint256 utilizationBps = 5000;
-        uint256 maxSingleBetExposure = 100e18;
-
-        vm.prank(reporter);
-        
-        vm.expectEmit(true, false, false, true);
-        emit SolvencyReported(
-            epochId,
-            poolBalance,
-            totalLiability,
-            utilizationBps,
-            maxSingleBetExposure
-        );
-        
-        poolReserve.reportSolvency(
-            epochId,
-            poolBalance,
-            totalLiability,
-            utilizationBps,
-            maxSingleBetExposure
-        );
-
-        PoolReserve.SolvencyReport memory report = poolReserve.getSolvencyReport(epochId);
-        assertEq(report.epochId, epochId);
-        assertEq(report.poolBalance, poolBalance);
-        assertEq(report.totalLiability, totalLiability);
-        assertEq(report.utilizationBps, utilizationBps);
-        assertEq(report.maxSingleBetExposure, maxSingleBetExposure);
-        assertEq(report.solvencyRatio, 2e18); // 1000/500 = 2.0
-    }
-
-    function test_ReportSolvencyExactRatio() public {
-        // Ratio = 1.5 exactly (at threshold)
-        uint256 poolBalance = 1500e18;
-        uint256 totalLiability = 1000e18;
-
-        vm.prank(reporter);
-        poolReserve.reportSolvency(1, poolBalance, totalLiability, 0, 0);
-
-        PoolReserve.SolvencyReport memory report = poolReserve.getLatestSolvencyReport();
-        assertEq(report.solvencyRatio, 1.5e18);
-    }
-
-    function test_ReportSolvencyZeroLiability() public {
-        // Zero liability should always pass (infinite solvency)
-        vm.prank(reporter);
-        poolReserve.reportSolvency(1, 1000e18, 0, 0, 0);
-
-        PoolReserve.SolvencyReport memory report = poolReserve.getLatestSolvencyReport();
-        assertEq(report.solvencyRatio, type(uint256).max);
-    }
-
-    function test_ReportSolvencyRevertsOnLowRatio() public {
-        // Ratio = 1.4 (below 1.5 threshold)
-        uint256 poolBalance = 1400e18;
-        uint256 totalLiability = 1000e18;
-
-        vm.prank(reporter);
-        vm.expectRevert(abi.encodeWithSelector(SolvencyRatioTooLow.selector, 1.4e18, 1.5e18));
-        poolReserve.reportSolvency(1, poolBalance, totalLiability, 0, 0);
-    }
-
-    function test_ReportSolvencyRevertsOnStaleEpoch() public {
-        // Report epoch 2 first
-        vm.prank(reporter);
-        poolReserve.reportSolvency(2, 1000e18, 500e18, 0, 0);
-
-        // Try to report epoch 1 (should fail)
-        vm.prank(reporter);
-        vm.expectRevert(InvalidAmount.selector);
-        poolReserve.reportSolvency(1, 1000e18, 500e18, 0, 0);
-    }
-
-    function test_ReportSolvencyRevertsForNonReporter() public {
-        vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
-        poolReserve.reportSolvency(1, 1000e18, 500e18, 0, 0);
-    }
-
-    // ==================== Reserve Allocation Tests ====================
-
-    function test_AllocateReserveToDistributor() public {
+    function test_ClaimTraderUsesSameSignedWithdrawalPath() public {
         uint256 amount = 500e18;
-        address receiver = address(100);
+        uint256 deadline = block.timestamp + 1 hours;
 
-        vm.prank(distributor);
-        
-        vm.expectEmit(true, true, false, true);
-        emit ReserveAllocatedToDistributor(amount, receiver);
-        
-        poolReserve.allocateReserveToLPDistributor(amount, receiver);
+        _deposit(trader, amount);
+        bytes memory signature = _signClaim(signerKey, trader, amount, deadline);
+
+        vm.prank(trader);
+        poolReserve.claimTrader(amount, deadline, signature);
+
+        assertEq(poolReserve.traderBalanceOf(trader), 0);
+        assertEq(poolReserve.totalCollateral(), 0);
     }
 
-    function test_AllocateReserveRevertsOnZeroAmount() public {
-        vm.prank(distributor);
-        vm.expectRevert(InvalidAmount.selector);
-        poolReserve.allocateReserveToLPDistributor(0, address(100));
+    function test_ClaimRejectsWrongSigner() public {
+        uint256 amount = 500e18;
+        uint256 deadline = block.timestamp + 1 hours;
+
+        _deposit(trader, amount);
+        bytes memory signature = _signClaim(otherSignerKey, trader, amount, deadline);
+
+        vm.prank(trader);
+        vm.expectRevert(InvalidSignature.selector);
+        poolReserve.claimTrader(amount, deadline, signature);
     }
 
-    function test_AllocateReserveRevertsOnZeroReceiver() public {
-        vm.prank(distributor);
-        vm.expectRevert(ZeroAddress.selector);
-        poolReserve.allocateReserveToLPDistributor(100e18, address(0));
+    function test_ClaimRejectsReplay() public {
+        uint256 amount = 500e18;
+        uint256 deadline = block.timestamp + 1 hours;
+
+        _deposit(trader, amount * 2);
+        bytes memory signature = _signClaim(signerKey, trader, amount, deadline);
+
+        vm.prank(trader);
+        poolReserve.claimTrader(amount, deadline, signature);
+
+        vm.prank(trader);
+        vm.expectRevert(InvalidSignature.selector);
+        poolReserve.claimTrader(amount, deadline, signature);
     }
 
-    function test_AllocateReserveRevertsForNonDistributor() public {
+    function test_ClaimRejectsExpiredSignature() public {
+        uint256 amount = 500e18;
+        uint256 deadline = block.timestamp + 1 hours;
+
+        _deposit(trader, amount);
+        bytes memory signature = _signClaim(signerKey, trader, amount, deadline);
+
+        vm.warp(deadline + 1);
+
+        vm.prank(trader);
+        vm.expectRevert(SignatureExpired.selector);
+        poolReserve.claimTrader(amount, deadline, signature);
+    }
+
+    function test_ClaimRejectsInsufficientTraderBalance() public {
+        uint256 amount = 500e18;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory signature = _signClaim(signerKey, trader, amount, deadline);
+
+        vm.prank(trader);
+        vm.expectRevert(InsufficientBalance.selector);
+        poolReserve.claimTrader(amount, deadline, signature);
+    }
+
+    function test_OwnerCanUpdateClaimSigner() public {
+        address newSigner = vm.addr(otherSignerKey);
+
+        vm.prank(owner);
+        poolReserve.setClaimSigner(newSigner);
+
+        assertEq(poolReserve.claimSigner(), newSigner);
+    }
+
+    function test_NonOwnerCannotUpdateClaimSigner() public {
         vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
-        poolReserve.allocateReserveToLPDistributor(100e18, address(100));
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", randomUser));
+        poolReserve.setClaimSigner(vm.addr(otherSignerKey));
     }
 
-    // ==================== View Function Tests ====================
+    function test_OwnerCanUpgradeImplementation() public {
+        PoolReserveV2 v2 = new PoolReserveV2();
 
-    function test_TotalCollateral() public {
-        // LP deposits
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
-        vm.stopPrank();
+        vm.prank(owner);
+        poolReserve.upgradeToAndCall(address(v2), "");
 
-        // Trader deposits (increases pool balance)
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), 500e18);
-        poolReserve.depositTrader(500e18);
-        vm.stopPrank();
-
-        assertEq(poolReserve.totalCollateral(), 1500e18);
+        assertEq(proxy.implementation(), address(v2));
+        assertEq(PoolReserveV2(address(proxy)).version(), 2);
+        assertEq(poolReserve.owner(), owner);
+        assertEq(address(poolReserve.asset()), address(asset));
     }
 
-    function test_LPValueOf() public {
-        // LP1 deposits
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
-        vm.stopPrank();
+    function test_NonOwnerCannotUpgradeImplementation() public {
+        PoolReserveV2 v2 = new PoolReserveV2();
 
-        // LP2 deposits
-        vm.startPrank(lp2);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
-        vm.stopPrank();
-
-        // Each LP should have value of 1000e18 (half of total)
-        assertEq(poolReserve.lpValueOf(lp1), 1000e18);
-        assertEq(poolReserve.lpValueOf(lp2), 1000e18);
+        vm.prank(randomUser);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", randomUser));
+        poolReserve.upgradeToAndCall(address(v2), "");
     }
 
-    function test_PreviewDepositLP() public {
-        // Before any deposits
-        assertEq(poolReserve.previewDepositLP(1000e18), 1000e18);
-
-        // After first deposit
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
+    function _deposit(address account, uint256 amount) internal {
+        vm.startPrank(account);
+        asset.approve(address(poolReserve), amount);
+        poolReserve.depositTrader(amount);
         vm.stopPrank();
-
-        // New deposit should get proportional shares
-        assertEq(poolReserve.previewDepositLP(500e18), 500e18);
     }
 
-    function test_PreviewWithdrawLP() public {
-        // Before any deposits
-        assertEq(poolReserve.previewWithdrawLP(1000e18), 0);
-
-        // After deposit
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
-        vm.stopPrank();
-
-        // Withdraw preview
-        assertEq(poolReserve.previewWithdrawLP(500e18), 500e18);
-    }
-
-    // ==================== Integration Tests ====================
-
-    function test_LPAndTraderTogether() public {
-        // LP1 deposits
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 1000e18);
-        poolReserve.depositLP(1000e18);
-        vm.stopPrank();
-
-        // Trader1 deposits (no balance tracking in demo, just transfers)
-        vm.startPrank(trader1);
-        asset.approve(address(poolReserve), 500e18);
-        poolReserve.depositTrader(500e18);
-        vm.stopPrank();
-
-        // Check state - totalCollateral includes all pool assets
-        assertEq(poolReserve.totalCollateral(), 1500e18);
-        assertEq(poolReserve.totalLPShares(), 1000e18);
-
-        // Trader claims directly (no withdrawable check in demo)
-        vm.prank(trader1);
-        poolReserve.claimTrader(200e18);
-
-        // Pool balance reduced
-        assertEq(poolReserve.totalCollateral(), 1300e18);
-
-        // LP withdraws
-        vm.prank(lp1);
-        poolReserve.withdrawLP(500e18);
-
-        // LP should get proportional share (650e18 since total is now 1300e18)
-        assertEq(poolReserve.totalCollateral(), 650e18);
-        assertEq(poolReserve.totalLPShares(), 500e18);
-    }
-
-    function test_FirstLPBootstrap() public {
-        // First LP gets 1:1 shares
-        uint256 depositAmount = 1e18; // Small amount
-        
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), depositAmount);
-        poolReserve.depositLP(depositAmount);
-        vm.stopPrank();
-
-        assertEq(poolReserve.lpSharesOf(lp1), depositAmount);
-        assertEq(poolReserve.totalLPShares(), depositAmount);
-    }
-
-    // ==================== IReceiver / onReport Tests ====================
-
-    function test_OnReport_Success() public {
-        // Setup - LP deposits
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
-        // Encode report
-        bytes memory report = abi.encode(
-            uint256(1), // epochId
-            uint256(100_000e18), // poolBalance
-            uint256(0), // totalLiability
-            uint256(0), // utilizationBps
-            uint256(10_000e18) // maxSingleBetExposure
+    function _signClaim(
+        uint256 privateKey,
+        address account,
+        uint256 amount,
+        uint256 deadline
+    ) internal view returns (bytes memory) {
+        bytes32 digest = poolReserve.getClaimDigest(
+            account,
+            amount,
+            poolReserve.nonces(account),
+            deadline
         );
-
-        // Call onReport as forwarder
-        vm.prank(address(0x999));
-        vm.expectEmit(true, false, false, true);
-        emit SolvencyReported(
-            uint256(1),
-            uint256(100_000e18),
-            uint256(0),
-            uint256(0),
-            uint256(10_000e18)
-        );
-        poolReserve.onReport("", report);
-
-        // Verify report was stored
-        assertEq(poolReserve.latestSolvencyEpochId(), 1);
-    }
-
-    function test_OnReport_RevertInvalidSender() public {
-        bytes memory report = abi.encode(
-            uint256(1),
-            uint256(100_000e18),
-            uint256(0),
-            uint256(0),
-            uint256(10_000e18)
-        );
-
-        // Call onReport as non-forwarder should revert
-        vm.prank(lp1);
-        vm.expectRevert(abi.encodeWithSelector(
-            bytes4(keccak256("InvalidSender(address,address)")),
-            lp1,
-            address(0x999)
-        ));
-        poolReserve.onReport("", report);
-    }
-
-    function test_OnReport_MultipleEpochs() public {
-        // Setup
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 200_000e18);
-        poolReserve.depositLP(200_000e18);
-        vm.stopPrank();
-
-        // Epoch 1
-        vm.prank(address(0x999));
-        poolReserve.onReport("", abi.encode(
-            uint256(1),
-            uint256(100_000e18),
-            uint256(0),
-            uint256(0),
-            uint256(10_000e18)
-        ));
-
-        // Epoch 2
-        vm.prank(address(0x999));
-        poolReserve.onReport("", abi.encode(
-            uint256(2),
-            uint256(150_000e18),
-            uint256(10_000e18),
-            uint256(666), // utilization
-            uint256(10_000e18)
-        ));
-
-        assertEq(poolReserve.latestSolvencyEpochId(), 2);
-    }
-
-    function test_SupportsInterface() public view {
-        // IReceiver interface ID
-        bytes4 receiverInterface = type(IReceiver).interfaceId;
-        assertTrue(poolReserve.supportsInterface(receiverInterface));
-
-        // ERC165 interface ID
-        bytes4 erc165Interface = 0x01ffc9a7;
-        assertTrue(poolReserve.supportsInterface(erc165Interface));
-    }
-
-    function test_ForwarderAddressGetter() public view {
-        assertEq(poolReserve.getForwarderAddress(), address(0x999));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 }

@@ -7,10 +7,10 @@ local-simulation:
     - chain-name: ethereum-testnet-sepolia
       url: https://eth-sepolia.api.onfinality.io/public
 
-sepolia-real:
+worldchain:
   rpcs:
-    - chain-name: ethereum-testnet-sepolia
-      url: https://eth-sepolia.api.onfinality.io/public
+    - chain-name: ethereum-mainnet-worldchain-1
+      url: https://soft-damp-dawn.worldchain-mainnet.quiknode.pro/7bfe836c5a78f4396a23adc241367c5111859c43/
 
 staging:
   cre-cli:
@@ -20,8 +20,8 @@ staging:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: ${RPC_URL_SEPOLIA}
-    - chain-name: ethereum-testnet-sepolia-base
-      url: ${RPC_URL_BASE_SEPOLIA}
+    - chain-name: ethereum-mainnet-worldchain-1
+      url: https://soft-damp-dawn.worldchain-mainnet.quiknode.pro/7bfe836c5a78f4396a23adc241367c5111859c43/
 
 production:
   cre-cli:

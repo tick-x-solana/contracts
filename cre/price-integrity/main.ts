@@ -186,11 +186,24 @@ const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string =
   runtime.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime.log("========================================");
 
-  const windowEnd = Math.floor(triggerTimestamp / 900) * 900;
-  const windowStart = windowEnd - 900;
+  const configuredWindowStart = runtime.config.simulationWindowStart;
+  const configuredWindowEnd = runtime.config.simulationWindowEnd;
+  const hasConfiguredWindow =
+    typeof configuredWindowStart === "number" &&
+    typeof configuredWindowEnd === "number";
+
+  const windowEnd = hasConfiguredWindow
+    ? configuredWindowEnd
+    : Math.floor(triggerTimestamp / 900) * 900;
+  const windowStart = hasConfiguredWindow
+    ? configuredWindowStart
+    : windowEnd - 900;
   const epochId = Math.floor(windowStart / 900);
 
   runtime.log(`Processing window: ${windowStart} - ${windowEnd} (epoch ${epochId})`);
+  if (hasConfiguredWindow) {
+    runtime.log("Using configured simulation window from workflow config");
+  }
   runtime.log("Checking idempotency...");
 
   // Get API key from secrets (must be done outside runInNodeMode)
@@ -222,7 +235,7 @@ const onCronTrigger = (runtime: Runtime<Config>, payload: CronPayload): string =
 
   runtime.log("Fetching Chainlink candles...");
   const chainlinkResponse = runtime.runInNodeMode(
-    (nodeRuntime) => fetchOhlcCandles(nodeRuntime, apiKey, windowStart, windowEnd, "chainlink"),
+    (nodeRuntime) => fetchOhlcCandles(nodeRuntime, apiKey, windowStart, windowEnd, "internal"),
     consensusIdenticalAggregation<OhlcResponse>()
   )().result();
   runtime.log(`Fetched ${chainlinkResponse.count} Chainlink candles`);

@@ -26,7 +26,7 @@ production:
     config-path: "./config.json"
     secrets-path: "../secrets.yaml"
 
-sepolia-real:
+worldchain:
   user-workflow:
     workflow-name: "tapfun-price-integrity"
   workflow-artifacts:

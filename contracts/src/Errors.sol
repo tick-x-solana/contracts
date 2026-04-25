@@ -17,10 +17,14 @@ error ZeroAddress();
 
 // State errors
 error AlreadyExists();
+error AlreadyInitialized();
 error NotFound();
 error InsufficientBalance();
 error InsufficientShares();
 error InsufficientWithdrawable();
+error NativeTransferFailed();
+error InvalidSignature();
+error SignatureExpired();
 
 // Price integrity errors
 error InvalidMetricBounds(string metric);

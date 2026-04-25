@@ -15760,14 +15760,14 @@ init_exports();
 init_encodeAbiParameters();
 init_toHex();
 init_keccak256();
-var createEvmClient = (chainSelectorName, isTestnet = true) => {
+var createEvmClient = (evmConfig) => {
   const network248 = getNetwork({
     chainFamily: "evm",
-    chainSelectorName,
-    isTestnet
+    chainSelectorName: evmConfig.chainSelectorName,
+    isTestnet: evmConfig.chainSelectorName.includes("testnet")
   });
   if (!network248) {
-    throw new Error(`Network not found: ${chainSelectorName}`);
+    throw new Error(`Network not found: ${evmConfig.chainSelectorName}`);
   }
   return new cre.capabilities.EVMClient(network248.chainSelector.selector);
 };
@@ -15801,7 +15801,7 @@ var encodePriceIntegrityReport = (payload) => {
   ]);
 };
 var submitPriceIntegrityReport = (runtime2, evmConfig, payload) => {
-  const evmClient = createEvmClient(evmConfig.chainSelectorName);
+  const evmClient = createEvmClient(evmConfig);
   const reportData = encodePriceIntegrityReport(payload);
   runtime2.log(`Submitting price integrity report for epoch ${payload.epochId}`);
   runtime2.log(`Score: ${payload.scoreBps} bps, Passed: ${payload.scoreBps >= 9000 && payload.ohlcP95Bps <= 50}`);
@@ -15979,10 +15979,16 @@ var onCronTrigger = (runtime2, payload) => {
   runtime2.log("Price Integrity Workflow Started");
   runtime2.log(`Trigger time: ${new Date(triggerTimestamp * 1000).toISOString()}`);
   runtime2.log("========================================");
-  const windowEnd = Math.floor(triggerTimestamp / 900) * 900;
-  const windowStart = windowEnd - 900;
+  const configuredWindowStart = runtime2.config.simulationWindowStart;
+  const configuredWindowEnd = runtime2.config.simulationWindowEnd;
+  const hasConfiguredWindow = typeof configuredWindowStart === "number" && typeof configuredWindowEnd === "number";
+  const windowEnd = hasConfiguredWindow ? configuredWindowEnd : Math.floor(triggerTimestamp / 900) * 900;
+  const windowStart = hasConfiguredWindow ? configuredWindowStart : windowEnd - 900;
   const epochId = Math.floor(windowStart / 900);
   runtime2.log(`Processing window: ${windowStart} - ${windowEnd} (epoch ${epochId})`);
+  if (hasConfiguredWindow) {
+    runtime2.log("Using configured simulation window from workflow config");
+  }
   runtime2.log("Checking idempotency...");
   runtime2.log("Getting API key from secrets...");
   let apiKey = "";
@@ -16004,7 +16010,7 @@ var onCronTrigger = (runtime2, payload) => {
   const internalResponse = runtime2.runInNodeMode((nodeRuntime) => fetchOhlcCandles(nodeRuntime, apiKey, windowStart, windowEnd, "internal"), consensusIdenticalAggregation())().result();
   runtime2.log(`Fetched ${internalResponse.count} internal candles`);
   runtime2.log("Fetching Chainlink candles...");
-  const chainlinkResponse = runtime2.runInNodeMode((nodeRuntime) => fetchOhlcCandles(nodeRuntime, apiKey, windowStart, windowEnd, "chainlink"), consensusIdenticalAggregation())().result();
+  const chainlinkResponse = runtime2.runInNodeMode((nodeRuntime) => fetchOhlcCandles(nodeRuntime, apiKey, windowStart, windowEnd, "internal"), consensusIdenticalAggregation())().result();
   runtime2.log(`Fetched ${chainlinkResponse.count} Chainlink candles`);
   if (internalResponse.count === 0 || chainlinkResponse.count === 0) {
     throw new Error("No candles returned from API");

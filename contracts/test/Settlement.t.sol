@@ -42,7 +42,7 @@ contract SettlementTest is Test {
         roles = new Roles(owner, reporter, address(0), address(0), distributor);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
+        poolReserve = new PoolReserve();
         
         // Deploy Settlement (pointing to poolReserve)
         settlement = new Settlement(address(roles), address(poolReserve), address(0x999));

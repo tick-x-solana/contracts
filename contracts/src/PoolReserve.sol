@@ -1,51 +1,44 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.22;
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {Roles} from "./Roles.sol";
-import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {
     Unauthorized,
     InvalidAmount,
     ZeroAddress,
-    InsufficientShares,
-    SolvencyRatioTooLow
+    InsufficientBalance,
+    InsufficientCollateral,
+    InvalidSignature,
+    SignatureExpired
 } from "./Errors.sol";
-import {
-    LPDeposited,
-    LPWithdrawn,
-    TraderDeposited,
-    TraderClaimed,
-    SolvencyReported,
-    ReserveAllocatedToDistributor
-} from "./Events.sol";
+import {TraderDeposited, TraderClaimed} from "./Events.sol";
+import {ISignatureTransfer} from "./interfaces/ISignatureTransfer.sol";
 
 /// @title PoolReserve
-/// @notice App currency vault with LP share accounting and separate trader balances
-/// @dev Handles LP deposits/withdrawals, trader collateral, and solvency reporting
-contract PoolReserve is ReceiverTemplate {
-    /// @notice Minimum solvency ratio (1.5x = 1.5e18)
-    uint256 public constant MIN_SOLVENCY_RATIO = 1.5e18;
+/// @notice UUPS-upgradeable ERC20 reserve focused on trader deposits and admin-signed withdrawals.
+/// @dev No LP accounting, CRE receiver, or solvency logic.
+contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    bytes32 public constant CLAIM_TYPEHASH = keccak256(
+        "PoolReserveClaim(address trader,uint256 amount,uint256 nonce,uint256 deadline,address verifyingContract,uint256 chainId)"
+    );
 
-    /// @notice Precision for ratio calculations (1e18 = 1.0)
-    uint256 public constant RATIO_PRECISION = 1e18;
+    ISignatureTransfer public constant PERMIT2 =
+        ISignatureTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
-    /// @notice Reference to the roles contract for access control
-    Roles public immutable roles;
+    IERC20 public asset;
+    address public claimSigner;
+    bool private reentrancyLock;
 
-    /// @notice The ERC20 token used as the vault asset (e.g., USDT)
-    IERC20 public immutable asset;
-
-    /// @notice Total LP shares outstanding
+    uint256 public totalTraderDeposits;
     uint256 public totalLPShares;
-
-    /// @notice LP shares per address
-    mapping(address => uint256) public lpSharesOf;
-
-    /// @notice Latest solvency epoch ID
     uint256 public latestSolvencyEpochId;
+    mapping(address => uint256) public traderBalanceOf;
+    mapping(address => uint256) public lpSharesOf;
+    mapping(address => uint256) public nonces;
 
-    /// @notice Solvency report data structure
     struct SolvencyReport {
         uint256 epochId;
         uint256 poolBalance;
@@ -56,264 +49,230 @@ contract PoolReserve is ReceiverTemplate {
         uint256 solvencyRatio;
     }
 
-    /// @notice Stored solvency reports by epoch ID
-    mapping(uint256 => SolvencyReport) public solvencyReports;
+    event PoolReserveInitialized(address indexed owner, address indexed asset, address indexed claimSigner);
+    event ClaimSignerUpdated(address indexed previousSigner, address indexed newSigner);
 
-    modifier onlyOwner() override {
-        if (msg.sender != roles.owner()) revert Unauthorized(msg.sender);
+    modifier nonReentrant() {
+        if (reentrancyLock) revert Unauthorized(msg.sender);
+        reentrancyLock = true;
         _;
+        reentrancyLock = false;
     }
 
-    modifier onlyReporter() {
-        if (msg.sender != roles.reporter()) revert Unauthorized(msg.sender);
-        _;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
     }
 
-    modifier onlyDistributor() {
-        if (msg.sender != roles.distributor()) revert Unauthorized(msg.sender);
-        _;
-    }
-
-    /// @param _roles Address of the Roles contract
-    /// @param _asset Address of the ERC20 asset (e.g., USDT)
-    /// @param _forwarder Address of the forwarder contract
-    constructor(address _roles, address _asset, address _forwarder) ReceiverTemplate(_forwarder) {
-        if (_roles == address(0)) revert ZeroAddress();
+    /// @notice Initialize proxy storage.
+    /// @param _owner Owner allowed to update signer and authorize upgrades.
+    /// @param _asset ERC20 reserve asset.
+    /// @param _claimSigner Admin signer authorizing trader claims.
+    function initialize(address _owner, address _asset, address _claimSigner) external initializer {
         if (_asset == address(0)) revert ZeroAddress();
-        roles = Roles(_roles);
+        if (_claimSigner == address(0)) revert ZeroAddress();
+
+        __Ownable_init(_owner);
+
         asset = IERC20(_asset);
+        claimSigner = _claimSigner;
+
+        emit PoolReserveInitialized(_owner, _asset, _claimSigner);
     }
 
-    // ==================== LP Functions ====================
-
-    /// @notice Deposit assets and mint LP shares
-    /// @param amount Amount of assets to deposit
-    function depositLP(uint256 amount) external {
+    /// @notice Deposit trader collateral into the reserve.
+    /// @param amount Amount of assets to deposit.
+    function depositTrader(uint256 amount) external nonReentrant {
         if (amount == 0) revert InvalidAmount();
 
-        uint256 shares;
-        // Query balance BEFORE the transfer (assets already in pool)
-        uint256 totalAssetsBefore = asset.balanceOf(address(this));
-
-        if (totalLPShares == 0) {
-            // First LP: 1:1 ratio
-            shares = amount;
-        } else {
-            // Subsequent LPs: shares proportional to contribution
-            // amount / (totalAssetsBefore + amount) = shares / (totalLPShares + shares)
-            // shares = amount * totalLPShares / totalAssetsBefore
-            shares = (amount * totalLPShares) / totalAssetsBefore;
-        }
-
-        if (shares == 0) revert InvalidAmount();
-
-        // Update state
-        totalLPShares += shares;
-        lpSharesOf[msg.sender] += shares;
-
-        // Transfer assets from LP
         bool success = asset.transferFrom(msg.sender, address(this), amount);
         if (!success) revert InvalidAmount();
 
-        emit LPDeposited(msg.sender, amount, shares);
+        _recordTraderDeposit(msg.sender, amount);
     }
 
-    /// @notice Burn LP shares and withdraw assets
-    /// @param shares Amount of shares to burn
-    function withdrawLP(uint256 shares) external {
-        if (shares == 0) revert InvalidAmount();
-        if (lpSharesOf[msg.sender] < shares) revert InsufficientShares();
-
-        uint256 totalAssets = asset.balanceOf(address(this));
-        uint256 amount = (shares * totalAssets) / totalLPShares;
-
-        // Update state
-        totalLPShares -= shares;
-        lpSharesOf[msg.sender] -= shares;
-
-        // Transfer assets to LP
-        bool success = asset.transfer(msg.sender, amount);
-        if (!success) revert InvalidAmount();
-
-        emit LPWithdrawn(msg.sender, shares, amount);
-    }
-
-    // ==================== Trader Functions ====================
-
-    /// @notice Deposit trader collateral (demo: no balance tracking)
-    /// @param amount Amount of assets to deposit
-    function depositTrader(uint256 amount) external {
+    /// @notice Deposit trader collateral using Uniswap Permit2 SignatureTransfer.
+    /// @param amount Amount of assets to pull through Permit2.
+    /// @param permit2Signature Trader's Permit2 signature.
+    /// @param permit Permit2 transfer authorization.
+    function depositTraderWithPermit2(
+        uint256 amount,
+        bytes calldata permit2Signature,
+        ISignatureTransfer.PermitTransferFrom calldata permit
+    ) external nonReentrant {
         if (amount == 0) revert InvalidAmount();
+        if (permit.permitted.token != address(asset)) revert InvalidAmount();
 
-        // Transfer assets from trader (no state tracking for demo)
-        bool success = asset.transferFrom(msg.sender, address(this), amount);
-        if (!success) revert InvalidAmount();
+        ISignatureTransfer.SignatureTransferDetails memory transferDetails =
+            ISignatureTransfer.SignatureTransferDetails({
+                to: address(this),
+                requestedAmount: amount
+            });
 
-        emit TraderDeposited(msg.sender, amount);
+        PERMIT2.permitTransferFrom(permit, transferDetails, msg.sender, permit2Signature);
+
+        _recordTraderDeposit(msg.sender, amount);
     }
 
-    /// @notice Claim trader amount (demo: no withdrawable check)
-    /// @param amount Amount to claim
-    function claimTrader(uint256 amount) external {
-        if (amount == 0) revert InvalidAmount();
+    function _recordTraderDeposit(address trader, uint256 amount) internal {
+        traderBalanceOf[trader] += amount;
+        totalTraderDeposits += amount;
 
-        // Transfer assets to trader (no balance check for demo)
+        emit TraderDeposited(trader, amount);
+    }
+
+    /// @notice Withdraw trader collateral with an admin signature.
+    /// @param amount Amount of assets to withdraw.
+    /// @param deadline Last valid timestamp for the signature.
+    /// @param adminSignature Signature from claimSigner over this claim.
+    function withdrawTrader(
+        uint256 amount,
+        uint256 deadline,
+        bytes calldata adminSignature
+    ) public nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        if (block.timestamp > deadline) revert SignatureExpired();
+        if (traderBalanceOf[msg.sender] < amount) revert InsufficientBalance();
+        if (asset.balanceOf(address(this)) < amount) revert InsufficientCollateral();
+
+        uint256 nonce = nonces[msg.sender];
+        bytes32 digest = getClaimDigest(msg.sender, amount, nonce, deadline);
+        if (_recoverSigner(digest, adminSignature) != claimSigner) revert InvalidSignature();
+
+        nonces[msg.sender] = nonce + 1;
+        traderBalanceOf[msg.sender] -= amount;
+        totalTraderDeposits -= amount;
+
         bool success = asset.transfer(msg.sender, amount);
         if (!success) revert InvalidAmount();
 
         emit TraderClaimed(msg.sender, amount);
     }
 
-    // ==================== Solvency Reporting ====================
-
-    /// @notice Process report from receiver template (called by forwarder)
-    /// @param report Encoded solvency report data
-    function _processReport(bytes calldata report) internal override {
-        (
-            uint256 epochId,
-            uint256 poolBalance,
-            uint256 totalLiability,
-            uint256 utilizationBps,
-            uint256 maxSingleBetExposure
-        ) = abi.decode(report, (uint256, uint256, uint256, uint256, uint256));
-
-        _reportSolvency(epochId, poolBalance, totalLiability, utilizationBps, maxSingleBetExposure);
+    /// @notice Claim is the signed trader withdrawal path.
+    function claimTrader(
+        uint256 amount,
+        uint256 deadline,
+        bytes calldata adminSignature
+    ) external {
+        withdrawTrader(amount, deadline, adminSignature);
     }
 
-    /// @notice Internal function to process solvency report
-    /// @param epochId Unique epoch identifier (must be monotonically increasing)
-    /// @param poolBalance Total pool balance at time of report
-    /// @param totalLiability Total outstanding liability
-    /// @param utilizationBps Utilization ratio in basis points
-    /// @param maxSingleBetExposure Maximum exposure from a single bet
-    function _reportSolvency(
-        uint256 epochId,
-        uint256 poolBalance,
-        uint256 totalLiability,
-        uint256 utilizationBps,
-        uint256 maxSingleBetExposure
-    ) internal {
-        // Validate epoch monotonicity
-        if (epochId <= latestSolvencyEpochId) {
-            revert InvalidAmount(); // Reusing error for simplicity
-        }
-
-        // Calculate solvency ratio
-        uint256 solvencyRatio;
-        if (totalLiability == 0) {
-            solvencyRatio = type(uint256).max; // Infinite solvency when no liability
-        } else {
-            solvencyRatio = (poolBalance * RATIO_PRECISION) / totalLiability;
-        }
-
-        // Enforce minimum solvency ratio when there is liability
-        if (totalLiability > 0 && solvencyRatio < MIN_SOLVENCY_RATIO) {
-            revert SolvencyRatioTooLow(solvencyRatio, MIN_SOLVENCY_RATIO);
-        }
-
-        // Store the report
-        solvencyReports[epochId] = SolvencyReport({
-            epochId: epochId,
-            poolBalance: poolBalance,
-            totalLiability: totalLiability,
-            utilizationBps: utilizationBps,
-            maxSingleBetExposure: maxSingleBetExposure,
-            timestamp: block.timestamp,
-            solvencyRatio: solvencyRatio
-        });
-
-        latestSolvencyEpochId = epochId;
-
-        emit SolvencyReported(
-            epochId,
-            poolBalance,
-            totalLiability,
-            utilizationBps,
-            maxSingleBetExposure
-        );
+    function claimTrader(uint256) external pure {
+        revert InvalidSignature();
     }
 
-    /// @notice Report solvency metrics (called by reporter)
-    /// @param epochId Unique epoch identifier (must be monotonically increasing)
-    /// @param poolBalance Total pool balance at time of report
-    /// @param totalLiability Total outstanding liability
-    /// @param utilizationBps Utilization ratio in basis points
-    /// @param maxSingleBetExposure Maximum exposure from a single bet
-    function reportSolvency(
-        uint256 epochId,
-        uint256 poolBalance,
-        uint256 totalLiability,
-        uint256 utilizationBps,
-        uint256 maxSingleBetExposure
-    ) external onlyReporter {
-        _reportSolvency(epochId, poolBalance, totalLiability, utilizationBps, maxSingleBetExposure);
+    function setClaimSigner(address newSigner) external onlyOwner {
+        if (newSigner == address(0)) revert ZeroAddress();
+        address previousSigner = claimSigner;
+        claimSigner = newSigner;
+        emit ClaimSignerUpdated(previousSigner, newSigner);
     }
 
-    /// @notice Get a stored solvency report by epoch ID
-    /// @param epochId The epoch ID to query
-    /// @return The solvency report data
-    function getSolvencyReport(uint256 epochId) external view returns (SolvencyReport memory) {
-        return solvencyReports[epochId];
-    }
-
-    /// @notice Get the latest solvency report
-    /// @return The latest solvency report data
-    function getLatestSolvencyReport() external view returns (SolvencyReport memory) {
-        return solvencyReports[latestSolvencyEpochId];
-    }
-
-    // ==================== Reserve Allocation ====================
-
-    /// @notice Allocate reserve to LP distributor (called by distributor)
-    /// @param amount Amount to allocate
-    /// @param receiver Receiver address for the allocation
-    function allocateReserveToLPDistributor(uint256 amount, address receiver) external onlyDistributor {
-        if (amount == 0) revert InvalidAmount();
-        if (receiver == address(0)) revert ZeroAddress();
-
-        // Note: This is a bookkeeping function. The actual transfer happens
-        // through the LPDistributor contract using CCIP (mocked for PoC).
-        // The allocation is tracked but assets remain in this contract.
-
-        emit ReserveAllocatedToDistributor(amount, receiver);
-    }
-
-    // ==================== View Functions ====================
-
-    /// @notice Get total collateral (LP assets + trader balances)
-    /// @return Total collateral in the vault
     function totalCollateral() external view returns (uint256) {
         return asset.balanceOf(address(this));
     }
 
-    /// @notice Get LP value for an address
-    /// @param lp LP address
-    /// @return LP's share of the pool assets
-    function lpValueOf(address lp) external view returns (uint256) {
-        if (totalLPShares == 0) return 0;
-        return (lpSharesOf[lp] * asset.balanceOf(address(this))) / totalLPShares;
+    // ==================== Disabled Legacy Surface ====================
+    // These selectors are kept only so older scripts/tests compile while the
+    // reserve is trader-only. They intentionally do not implement LP, CRE, or
+    // solvency behavior.
+
+    function depositLP(uint256) external pure {
+        revert InvalidAmount();
     }
 
-    /// @notice Preview shares for a given deposit amount
-    /// @param amount Amount of assets to deposit
-    /// @return shares Amount of shares that would be minted
-    function previewDepositLP(uint256 amount) external view returns (uint256 shares) {
-        if (amount == 0) return 0;
-        uint256 totalAssetsBefore = asset.balanceOf(address(this));
-        
-        if (totalLPShares == 0) {
-            shares = amount;
-        } else {
-            shares = (amount * totalLPShares) / totalAssetsBefore;
+    function withdrawLP(uint256) external pure {
+        revert InvalidAmount();
+    }
+
+    function reportSolvency(uint256, uint256, uint256, uint256, uint256) external pure {
+        revert InvalidAmount();
+    }
+
+    function allocateReserveToLPDistributor(uint256, address) external pure {
+        revert InvalidAmount();
+    }
+
+    function getSolvencyReport(uint256) external pure returns (SolvencyReport memory) {
+        return SolvencyReport(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    function getLatestSolvencyReport() external pure returns (SolvencyReport memory) {
+        return SolvencyReport(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    function lpValueOf(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewDepositLP(uint256) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewWithdrawLP(uint256) external pure returns (uint256) {
+        return 0;
+    }
+
+    function onReport(bytes calldata, bytes calldata) external pure {
+        revert InvalidAmount();
+    }
+
+    function supportsInterface(bytes4) external pure returns (bool) {
+        return false;
+    }
+
+    function getForwarderAddress() external pure returns (address) {
+        return address(0);
+    }
+
+    function getClaimDigest(
+        address trader,
+        uint256 amount,
+        uint256 nonce,
+        uint256 deadline
+    ) public view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19Ethereum Signed Message:\n32",
+                keccak256(
+                    abi.encode(
+                        CLAIM_TYPEHASH,
+                        trader,
+                        amount,
+                        nonce,
+                        deadline,
+                        address(this),
+                        block.chainid
+                    )
+                )
+            )
+        );
+    }
+
+    /// @notice UUPS upgrade authorization: only PoolReserve owner can upgrade.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function _recoverSigner(bytes32 digest, bytes calldata signature) internal pure returns (address) {
+        if (signature.length != 65) revert InvalidSignature();
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 0x20))
+            v := byte(0, calldataload(add(signature.offset, 0x40)))
         }
+
+        if (v < 27) v += 27;
+        if (v != 27 && v != 28) revert InvalidSignature();
+
+        address signer = ecrecover(digest, v, r, s);
+        if (signer == address(0)) revert InvalidSignature();
+        return signer;
     }
 
-    /// @notice Preview assets for a given share amount
-    /// @param shares Amount of shares to burn
-    /// @return amount Amount of assets that would be returned
-    function previewWithdrawLP(uint256 shares) external view returns (uint256 amount) {
-        if (shares == 0 || totalLPShares == 0) return 0;
-        uint256 totalAssets = asset.balanceOf(address(this));
-        amount = (shares * totalAssets) / totalLPShares;
-    }
+    uint256[44] private __gap;
 }

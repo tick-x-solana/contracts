@@ -8,7 +8,7 @@ import {Roles} from "../src/Roles.sol";
 import {MockERC20} from "./PoolReserve.t.sol";
 import {Unauthorized, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
 import {IReceiver} from "../src/interfaces/IReceiver.sol";
-import {CCIPDistributionRequested, ReserveAllocatedToDistributor} from "../src/Events.sol";
+import {CCIPDistributionRequested} from "../src/Events.sol";
 
 contract LPDistributorTest is Test {
     LPDistributor public lpDistributor;
@@ -22,10 +22,8 @@ contract LPDistributorTest is Test {
     address public distributor = address(4);
     address public randomUser = address(99);
     
-    address public lp1 = address(10);
     address public receiver = address(100);
 
-    uint256 constant INITIAL_LP_DEPOSIT = 100_000e18;
     uint64 constant DST_CHAIN_SELECTOR = 16015286601757825753; // Ethereum Sepolia
 
     function setUp() public {
@@ -37,7 +35,7 @@ contract LPDistributorTest is Test {
         roles = new Roles(owner, reporter, settler, address(0), owner);
         
         // Deploy PoolReserve
-        poolReserve = new PoolReserve(address(roles), address(asset), address(0x999));
+        poolReserve = new PoolReserve();
         
         // Deploy LPDistributor
         lpDistributor = new LPDistributor(address(roles), address(poolReserve), address(0x999));
@@ -46,8 +44,6 @@ contract LPDistributorTest is Test {
         vm.prank(owner);
         roles.setDistributor(address(lpDistributor));
         
-        // Mint tokens to LP
-        asset.mint(lp1, 1_000_000e18);
     }
 
     // ==================== Constructor Tests ====================
@@ -72,12 +68,6 @@ contract LPDistributorTest is Test {
     // ==================== Queue Distribution Tests ====================
 
     function test_QueueDistribution() public {
-        // First, LP deposits to pool to have reserves available
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), INITIAL_LP_DEPOSIT);
-        poolReserve.depositLP(INITIAL_LP_DEPOSIT);
-        vm.stopPrank();
-
         uint256 epochId = 1;
         uint256 amount = 10_000e18;
 
@@ -85,9 +75,6 @@ contract LPDistributorTest is Test {
         
         vm.expectEmit(true, false, false, true);
         emit CCIPDistributionRequested(epochId, amount, DST_CHAIN_SELECTOR, receiver);
-        
-        vm.expectEmit(true, true, false, true);
-        emit ReserveAllocatedToDistributor(amount, receiver);
         
         lpDistributor.queueDistribution(epochId, amount, DST_CHAIN_SELECTOR, receiver);
 
@@ -106,12 +93,6 @@ contract LPDistributorTest is Test {
     }
 
     function test_QueueMultipleDistributions() public {
-        // LP deposits first
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         vm.startPrank(owner);
         
         lpDistributor.queueDistribution(1, 5000e18, DST_CHAIN_SELECTOR, receiver);
@@ -134,12 +115,6 @@ contract LPDistributorTest is Test {
     }
 
     function test_QueueDistributionRevertsOnStaleEpoch() public {
-        // LP deposits first
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         // Queue epoch 2 first
         vm.prank(owner);
         lpDistributor.queueDistribution(2, 1000e18, DST_CHAIN_SELECTOR, receiver);
@@ -165,12 +140,6 @@ contract LPDistributorTest is Test {
     // ==================== Get Request Tests ====================
 
     function test_GetRequest() public {
-        // LP deposits first
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         uint256 epochId = 1;
         uint256 amount = 5000e18;
 
@@ -187,12 +156,6 @@ contract LPDistributorTest is Test {
     }
 
     function test_GetLatestRequest() public {
-        // LP deposits first
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         vm.startPrank(owner);
         lpDistributor.queueDistribution(1, 1000e18, DST_CHAIN_SELECTOR, receiver);
         lpDistributor.queueDistribution(2, 2000e18, DST_CHAIN_SELECTOR, address(101));
@@ -204,12 +167,6 @@ contract LPDistributorTest is Test {
     }
 
     function test_RequestExists() public {
-        // LP deposits first
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         assertFalse(lpDistributor.requestExists(1));
 
         vm.prank(owner);
@@ -222,12 +179,6 @@ contract LPDistributorTest is Test {
     // ==================== IReceiver / onReport Tests ====================
 
     function test_OnReport_Success() public {
-        // Setup - LP deposits
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 100_000e18);
-        poolReserve.depositLP(100_000e18);
-        vm.stopPrank();
-
         uint256 epochId = 1;
         uint256 amount = 1000e18;
 
@@ -259,12 +210,6 @@ contract LPDistributorTest is Test {
     }
 
     function test_OnReport_MultipleEpochs() public {
-        // Setup
-        vm.startPrank(lp1);
-        asset.approve(address(poolReserve), 200_000e18);
-        poolReserve.depositLP(200_000e18);
-        vm.stopPrank();
-
         // Epoch 1 via onReport
         vm.prank(address(0x999));
         lpDistributor.onReport("", abi.encode(1, 1000e18, DST_CHAIN_SELECTOR, receiver));

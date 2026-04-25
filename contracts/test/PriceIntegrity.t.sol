@@ -7,7 +7,7 @@ import {Roles} from "../src/Roles.sol";
 import {ReceiverTemplate} from "../src/abstracts/ReceiverTemplate.sol";
 import {IReceiver} from "../src/interfaces/IReceiver.sol";
 import {IERC165} from "../src/interfaces/IERC165.sol";
-import {Unauthorized, InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
+import {InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "../src/Errors.sol";
 import {PriceIntegrityBatchReported} from "../src/Events.sol";
 
 contract PriceIntegrityTest is Test {
@@ -21,7 +21,7 @@ contract PriceIntegrityTest is Test {
 
     // Test data
     uint256 constant EPOCH_1 = 1;
-    uint256 constant WINDOW_START = 1704067200; // Jan 1, 2024 00:00:00 UTC
+    uint256 constant WINDOW_START = 1777014000;
     uint256 constant CANDLE_COUNT = 900; // 15 minutes of 1-second candles
     bytes32 constant INTERNAL_HASH = keccak256("internal_candles");
     bytes32 constant CHAINLINK_HASH = keccak256("chainlink_candles");
@@ -135,9 +135,8 @@ contract PriceIntegrityTest is Test {
 
     // ==================== Auth Tests ====================
 
-    function test_NonReporterCannotSubmit() public {
+    function test_AnyCallerCanSubmit() public {
         vm.prank(randomUser);
-        vm.expectRevert(abi.encodeWithSelector(Unauthorized.selector, randomUser));
         priceIntegrity.submitBatchComparison(
             EPOCH_1,
             WINDOW_START,
@@ -152,6 +151,9 @@ contract PriceIntegrityTest is Test {
             SCORE_BPS,
             DIFF_ROOT
         );
+
+        PriceIntegrity.BatchReport memory report = priceIntegrity.getReport(EPOCH_1);
+        assertEq(report.epochId, EPOCH_1);
     }
 
     // ==================== Monotonic Epoch Tests ====================

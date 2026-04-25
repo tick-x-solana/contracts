@@ -1,138 +1,83 @@
-# Tapl CRE Workflows
+# TickX CRE
 
-Chainlink Runtime Environment (CRE) workflows for the Tapl prediction gaming platform.
+Chainlink CRE workflow project for TickX.
 
-## 📚 Documentation
+Current maintained scope is one workflow:
 
-- **[AGENTS.md](./AGENTS.md)** - Comprehensive development guide with best practices, common pitfalls, and troubleshooting
-- **[workflow-template/](./workflow-template/)** - Template for creating new workflows
+- `price-integrity`
 
-## Overview
-
-This project implements 5 CRE workflows that interact with the Tapl smart contracts:
-
-| Workflow | Trigger | Purpose | Status |
-|----------|---------|---------|--------|
-| **Price Integrity** | 15m cron | OHLC candle comparison with pass/fail reporting | ✅ Complete |
-| **Settlement** | 15m cron | Batch settlement commitment | ✅ Complete |
-| **Pool Solvency PoR** | Daily cron | Proof-of-reserve solvency reporting | ✅ Complete |
-| **Strategy Rebalance** | 15m cron | Volatility regime parameter updates | ✅ Complete |
+This workflow fetches internal and reference OHLC candles, computes quality metrics, and submits a report to `PriceIntegrity` onchain.
 
 ## Project Structure
 
-```
+```text
 cre/
-├── price-integrity/          # ✅ Workflow 1: Price Integrity
-│   ├── main.ts               # Entry point
-│   ├── workflow.yaml         # CRE workflow configuration
-│   ├── config.json           # Runtime config
-│   ├── types.ts              # Local types
-│   └── lib/                  # Local utilities
-├── workflow-template/        # 📋 Template for new workflows
+├── price-integrity/
 │   ├── main.ts
 │   ├── workflow.yaml
 │   ├── config.json
 │   ├── types.ts
 │   └── lib/
-├── src/                      # 📚 Reference implementations (templates)
-│   └── lib/
-├── test/
-│   └── price-integrity.test.ts
+├── project.yaml
+├── secrets.yaml
 ├── package.json
-├── tsconfig.json
-├── project.yaml              # CRE project settings
-├── secrets.yaml              # Secrets template
-├── AGENTS.md                 # 📖 Development guide
 └── README.md
 ```
 
-### ⚠️ CRITICAL: File Co-location
+## Important Constraint
 
-The CRE compiler **CANNOT** resolve `../` parent directory imports. All workflow files must be co-located within the workflow directory (e.g., `price-integrity/`). See [AGENTS.md](./AGENTS.md) for details.
+The CRE compiler cannot resolve `../` parent imports. Workflow-local files must stay inside the workflow directory.
 
 ## Quick Start
-
-### Prerequisites
-
-- [Bun](https://bun.sh/) - JavaScript runtime and package manager
-- CRE CLI - `npm install -g @chainlink/cre-cli` (or use npx)
-
-### Install Dependencies
 
 ```bash
 cd cre
 bun install
-```
-
-### Build
-
-```bash
 bun run build
 ```
 
-### Test
+## Simulate
 
 ```bash
-bun test
+cre workflow simulate price-integrity --target worldchain
 ```
 
-### Run Simulation
+Broadcast:
 
 ```bash
-# Local simulation with mock contracts
-cre workflow simulate price-integrity --target local-simulation
-
-# With real Sepolia contracts (read-only, no broadcast)
-cre workflow simulate price-integrity --target sepolia-real
-
-# With real Sepolia contracts (broadcast transactions - requires private key)
-export CRE_ETH_PRIVATE_KEY="your-private-key"
-cre workflow simulate price-integrity --target sepolia-real --broadcast
+export CRE_ETH_PRIVATE_KEY="<PRIVATE_KEY>"
+cre workflow simulate price-integrity --target worldchain --broadcast
 ```
 
-## Creating New Workflows
+## Deployed Contracts
 
-```bash
-# 1. Copy the template
-cp -r workflow-template settlement
+World Chain mainnet:
 
-# 2. Update workflow.yaml - change workflow-name
-# 3. Update config.json - add your contract addresses
-# 4. Implement logic in main.ts
-# 5. Copy needed utilities from price-integrity/lib/
+| Contract | Address |
+|---|---|
+| `PoolReserve` | `0x6351b3006aAE72a36006614310928930Ac229d0e` |
+| `PriceIntegrity` | `0xB9F60C92168cafA09eaA13302FD11896Cb773268` |
 
-# 6. Run simulation
-cre workflow simulate settlement --target local-simulation
-```
+## Config
 
-See **[AGENTS.md](./AGENTS.md)** for detailed development guide.
+Main files:
 
-## Configuration
+- [`project.yaml`](./project.yaml): target settings and RPC mapping
+- [`price-integrity/workflow.yaml`](./price-integrity/workflow.yaml): workflow target declarations
+- [`price-integrity/config.json`](./price-integrity/config.json): app API, chain selector, contract addresses, gas limit, and simulation window
 
-### Environment Variables
-
-Copy `secrets.yaml` and fill in your values:
-
-```yaml
-local-simulation:
-  secrets:
-    APP_API_KEY: "your-api-key"
-    APP_API_BASE_URL: "http://localhost:3000/api/v1"
-    PRICE_INTEGRITY_ADDRESS: "0x..."
-    REPORTER_PRIVATE_KEY: "0x..."
-```
-
-### Workflow Configuration
-
-Each workflow has its own `config.json` in the `workflows/{name}/` directory:
+Minimal runtime config shape:
 
 ```json
 {
-  "appApiBaseUrl": "http://localhost:3000/api/v1",
+  "appApiBaseUrl": "https://api.example.com/api/v1",
+  "simulationWindowStart": 1704067200,
+  "simulationWindowEnd": 1704068100,
+  "owner": "0x...",
   "evms": [
     {
-      "chainSelectorName": "ethereum-testnet-sepolia",
-      "chainId": 11155111,
+      "chainSelectorName": "ethereum-mainnet-worldchain-1",
+      "chainId": 480,
       "priceIntegrityAddress": "0x...",
       "gasLimit": "1000000"
     }
@@ -140,117 +85,19 @@ Each workflow has its own `config.json` in the `workflows/{name}/` directory:
 }
 ```
 
-## Deployed Contracts (Sepolia Testnet)
+## Workflow Behavior
 
-Contracts have been deployed to Sepolia testnet:
+`price-integrity` does the following:
 
-| Contract | Address |
-|----------|---------|
-| **Roles** | `0xC74DA4c872d6e547aD2c2a98116bBdfc70754844` |
-| **PriceIntegrity** | `0xe8fF31c2A959e35988DB3dF29Ce5A737D7edBd60` |
-| **PoolReserve** | `0xbC91e3a0654Dfe5E36EF1A5dF94eCa52daBA2673` |
-| **Settlement** | `0xDce6601eb0cbbb93a5506644C1e527293FC3F3F6` |
-| **LPDistributor** | `0x32BC43d36EE16BaB6765A4447ED48DC3210969EC` |
-| **StrategyManager** | `0x51c6B0cA0F3620248438B1FCCcaEfd67fca5a660` |
-| **Asset (USDT)** | `0x779877A7B0D9E8603169DdbD7836e478b4624789` |
+1. Resolve the reporting window
+2. Fetch internal OHLC candles from the TickX API
+3. Fetch reference OHLC candles
+4. Compute MAE, P95, max error, direction match, and outlier count
+5. Compute score and pass/fail flags
+6. Hash both candle sets and diff root
+7. Submit the report to `PriceIntegrity`
 
-RPC URL: `https://eth-sepolia.api.onfinality.io/public`
+## Notes
 
-## Workflow 1: Price Integrity
-
-### Purpose
-
-Compares internal app OHLC candles vs Chainlink reference candles every 15 minutes, computes matching metrics, and submits a report to the `PriceIntegrity` contract.
-
-### Trigger
-
-- **Type:** Cron
-- **Schedule:** Every 15 minutes (`*/15 * * * *`)
-
-### Flow
-
-1. Resolve target window (previous 15 minutes)
-2. Check idempotency (skip if epoch already processed)
-3. Fetch internal candles from app API
-4. Fetch Chainlink candles from app API
-5. Canonicalize (sort by timestamp)
-6. Compute metrics:
-   - Per-candle OHLC error in bps
-   - MAE, P95, Max error
-   - Direction match percentage
-   - Outlier count
-7. Compute score (weighted formula, 0-10000)
-8. Derive pass/fail flags
-9. Compute hashes (internal, Chainlink, diff Merkle root)
-10. Submit report on-chain
-
-### Metrics and Scoring
-
-**Error Formula:**
-```
-err_i = (abs(Oi-Or)/Or + abs(Hi-Hr)/Hr + abs(Li-Lr)/Lr + abs(Ci-Cr)/Cr) / 4 * 10000
-```
-
-**Score Formula:**
-```
-sAcc = max(0, 10000 - MAE * 200)
-sP95 = max(0, 10000 - P95 * 100)
-sMax = max(0, 10000 - Max * 50)
-sDir = directionMatchBps
-sOut = max(0, 10000 - outlierRate * 2)
-
-score = (5000*sAcc + 2000*sP95 + 1000*sMax + 1000*sDir + 1000*sOut) / 10000
-```
-
-**Pass Criteria:**
-- Score >= 9000 (90%)
-- P95 <= 50 bps (0.5%)
-
-### Contract Call
-
-```solidity
-PriceIntegrity.submitBatchComparison(
-  epochId,
-  windowStart,
-  candleCount,
-  internalCandlesHash,
-  chainlinkCandlesHash,
-  ohlcMaeBps,
-  ohlcP95Bps,
-  ohlcMaxBps,
-  directionMatchBps,
-  outlierCount,
-  scoreBps,
-  diffMerkleRoot
-)
-```
-
-### Testing
-
-```bash
-# Unit tests
-bun test
-
-# Local simulation
-cre workflow simulate price-integrity --target local-simulation
-```
-
-## Mock API
-
-For testing without real APIs, use the `MockAppApiClient`:
-
-```typescript
-const client = new MockAppApiClient();
-client.matchRate = 0.95; // 95% match between internal and Chainlink
-const candles = await client.getOhlcCandles(start, end, "internal");
-```
-
-## Dependencies
-
-- `@chainlink/cre-sdk`: Chainlink Runtime Environment SDK
-- `viem`: Ethereum interaction library
-- `zod`: Schema validation
-
-## License
-
-MIT
+- Target name is `worldchain`, while the chain selector used by CRE is `ethereum-mainnet-worldchain-1`.
+- This directory is scoped to `PriceIntegrity`; broader workflow documentation has been removed.

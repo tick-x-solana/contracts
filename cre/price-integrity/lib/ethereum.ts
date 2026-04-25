@@ -16,15 +16,15 @@ import { Config, EvmConfig } from "../types";
 // EVM Client Factory
 // ========================================
 
-export const createEvmClient = (chainSelectorName: string, isTestnet = true) => {
+export const createEvmClient = (evmConfig: EvmConfig) => {
   const network = getNetwork({
     chainFamily: "evm",
-    chainSelectorName,
-    isTestnet,
+    chainSelectorName: evmConfig.chainSelectorName,
+    isTestnet: evmConfig.chainSelectorName.includes("testnet"),
   });
 
   if (!network) {
-    throw new Error(`Network not found: ${chainSelectorName}`);
+    throw new Error(`Network not found: ${evmConfig.chainSelectorName}`);
   }
 
   return new cre.capabilities.EVMClient(network.chainSelector.selector);
@@ -87,7 +87,7 @@ export const submitPriceIntegrityReport = (
   evmConfig: EvmConfig,
   payload: PriceIntegrityPayload
 ): string => {
-  const evmClient = createEvmClient(evmConfig.chainSelectorName);
+  const evmClient = createEvmClient(evmConfig);
   const reportData = encodePriceIntegrityReport(payload);
 
   runtime.log(`Submitting price integrity report for epoch ${payload.epochId}`);
@@ -128,7 +128,7 @@ export const readLatestEpochId = async (
   runtime: Runtime<Config>,
   evmConfig: EvmConfig
 ): Promise<number> => {
-  const evmClient = createEvmClient(evmConfig.chainSelectorName);
+  const evmClient = createEvmClient(evmConfig);
   
   // This would call PriceIntegrity.latestEpochId()
   // For now, return 0 to indicate no prior reports

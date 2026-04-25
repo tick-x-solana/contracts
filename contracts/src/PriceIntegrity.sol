@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Roles} from "./Roles.sol";
 import {ReceiverTemplate} from "./abstracts/ReceiverTemplate.sol";
-import {Unauthorized, InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "./Errors.sol";
+import {InvalidMetricBounds, StaleEpoch, InvalidAmount, ZeroAddress} from "./Errors.sol";
 import {PriceIntegrityBatchReported} from "./Events.sol";
 
 /// @title PriceIntegrity
@@ -27,9 +27,6 @@ contract PriceIntegrity is ReceiverTemplate {
 
     /// @notice Reference to the roles contract for access control
     Roles public immutable roles;
-
-    /// @notice Latest submitted epoch ID (for monotonic enforcement)
-    uint256 public latestEpochId;
 
     /// @notice Batch report data structure
     struct BatchReport {
@@ -61,11 +58,6 @@ contract PriceIntegrity is ReceiverTemplate {
         bool isPassed, 
         uint8 failureFlags
     );
-
-    modifier onlyReporter() {
-        if (msg.sender != roles.reporter()) revert Unauthorized(msg.sender);
-        _;
-    }
 
     /// @param _roles Address of the Roles contract
     /// @param _forwarder Address of the Chainlink KeystoneForwarder contract
@@ -140,7 +132,7 @@ contract PriceIntegrity is ReceiverTemplate {
         uint256 outlierCount,
         uint256 scoreBps,
         bytes32 diffMerkleRoot
-    ) external onlyReporter {
+    ) external {
         _submitBatchComparison(
             epochId,
             windowStart,
@@ -172,10 +164,6 @@ contract PriceIntegrity is ReceiverTemplate {
         uint256 scoreBps,
         bytes32 diffMerkleRoot
     ) internal {
-        // Validate epoch monotonicity
-        if (epochId <= latestEpochId) {
-            revert StaleEpoch(epochId, latestEpochId + 1);
-        }
 
         // Validate candle count
         if (candleCount == 0) revert InvalidAmount();
@@ -212,9 +200,6 @@ contract PriceIntegrity is ReceiverTemplate {
         });
         reports[epochId] = report;
 
-        // Update latest epoch
-        latestEpochId = epochId;
-
         // Emit events
         emit PriceIntegrityBatchReported(
             epochId,
@@ -239,12 +224,6 @@ contract PriceIntegrity is ReceiverTemplate {
     /// @return The batch report data
     function getReport(uint256 epochId) external view returns (BatchReport memory) {
         return reports[epochId];
-    }
-
-    /// @notice Get the latest batch report
-    /// @return The latest batch report data
-    function getLatestReport() external view returns (BatchReport memory) {
-        return reports[latestEpochId];
     }
 
     /// @notice Check if a report would pass the quality gate (for external verification)
