@@ -2,9 +2,15 @@
 pragma solidity ^0.8.22;
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {
     Unauthorized,
     InvalidAmount,
@@ -15,18 +21,19 @@ import {
     SignatureExpired
 } from "./Errors.sol";
 import {TraderDeposited, TraderClaimed} from "./Events.sol";
-import {ISignatureTransfer} from "./interfaces/ISignatureTransfer.sol";
+import {IAllowanceTransfer} from "./interfaces/IAllowanceTransfer.sol";
 
 /// @title PoolReserve
 /// @notice UUPS-upgradeable ERC20 reserve focused on trader deposits and admin-signed withdrawals.
 /// @dev No LP accounting, CRE receiver, or solvency logic.
 contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    bytes32 public constant CLAIM_TYPEHASH = keccak256(
-        "PoolReserveClaim(address trader,uint256 amount,uint256 nonce,uint256 deadline,address verifyingContract,uint256 chainId)"
-    );
+    bytes32 public constant CLAIM_TYPEHASH =
+        keccak256(
+            "PoolReserveClaim(address trader,uint256 amount,uint256 nonce,uint256 deadline,address verifyingContract,uint256 chainId)"
+        );
 
-    ISignatureTransfer public constant PERMIT2 =
-        ISignatureTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+    IAllowanceTransfer public constant PERMIT2 =
+        IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
     IERC20 public asset;
     address public claimSigner;
@@ -49,8 +56,15 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 solvencyRatio;
     }
 
-    event PoolReserveInitialized(address indexed owner, address indexed asset, address indexed claimSigner);
-    event ClaimSignerUpdated(address indexed previousSigner, address indexed newSigner);
+    event PoolReserveInitialized(
+        address indexed owner,
+        address indexed asset,
+        address indexed claimSigner
+    );
+    event ClaimSignerUpdated(
+        address indexed previousSigner,
+        address indexed newSigner
+    );
 
     modifier nonReentrant() {
         if (reentrancyLock) revert Unauthorized(msg.sender);
@@ -68,7 +82,11 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param _owner Owner allowed to update signer and authorize upgrades.
     /// @param _asset ERC20 reserve asset.
     /// @param _claimSigner Admin signer authorizing trader claims.
-    function initialize(address _owner, address _asset, address _claimSigner) external initializer {
+    function initialize(
+        address _owner,
+        address _asset,
+        address _claimSigner
+    ) external initializer {
         if (_asset == address(0)) revert ZeroAddress();
         if (_claimSigner == address(0)) revert ZeroAddress();
 
@@ -91,25 +109,17 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _recordTraderDeposit(msg.sender, amount);
     }
 
-    /// @notice Deposit trader collateral using Uniswap Permit2 SignatureTransfer.
+    /// @notice Deposit trader collateral using Uniswap Permit2 AllowanceTransfer.
     /// @param amount Amount of assets to pull through Permit2.
-    /// @param permit2Signature Trader's Permit2 signature.
-    /// @param permit Permit2 transfer authorization.
-    function depositTraderWithPermit2(
-        uint256 amount,
-        bytes calldata permit2Signature,
-        ISignatureTransfer.PermitTransferFrom calldata permit
-    ) external nonReentrant {
+    function depositTraderWithPermit2(uint256 amount) external nonReentrant {
         if (amount == 0) revert InvalidAmount();
-        if (permit.permitted.token != address(asset)) revert InvalidAmount();
 
-        ISignatureTransfer.SignatureTransferDetails memory transferDetails =
-            ISignatureTransfer.SignatureTransferDetails({
-                to: address(this),
-                requestedAmount: amount
-            });
-
-        PERMIT2.permitTransferFrom(permit, transferDetails, msg.sender, permit2Signature);
+        PERMIT2.transferFrom(
+            msg.sender,
+            address(this),
+            uint160(amount),
+            address(asset)
+        );
 
         _recordTraderDeposit(msg.sender, amount);
     }
@@ -133,11 +143,13 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (amount == 0) revert InvalidAmount();
         if (block.timestamp > deadline) revert SignatureExpired();
         if (traderBalanceOf[msg.sender] < amount) revert InsufficientBalance();
-        if (asset.balanceOf(address(this)) < amount) revert InsufficientCollateral();
+        if (asset.balanceOf(address(this)) < amount)
+            revert InsufficientCollateral();
 
         uint256 nonce = nonces[msg.sender];
         bytes32 digest = getClaimDigest(msg.sender, amount, nonce, deadline);
-        if (_recoverSigner(digest, adminSignature) != claimSigner) revert InvalidSignature();
+        if (_recoverSigner(digest, adminSignature) != claimSigner)
+            revert InvalidSignature();
 
         nonces[msg.sender] = nonce + 1;
         traderBalanceOf[msg.sender] -= amount;
@@ -186,7 +198,13 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         revert InvalidAmount();
     }
 
-    function reportSolvency(uint256, uint256, uint256, uint256, uint256) external pure {
+    function reportSolvency(
+        uint256,
+        uint256,
+        uint256,
+        uint256,
+        uint256
+    ) external pure {
         revert InvalidAmount();
     }
 
@@ -194,11 +212,17 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         revert InvalidAmount();
     }
 
-    function getSolvencyReport(uint256) external pure returns (SolvencyReport memory) {
+    function getSolvencyReport(
+        uint256
+    ) external pure returns (SolvencyReport memory) {
         return SolvencyReport(0, 0, 0, 0, 0, 0, 0);
     }
 
-    function getLatestSolvencyReport() external pure returns (SolvencyReport memory) {
+    function getLatestSolvencyReport()
+        external
+        pure
+        returns (SolvencyReport memory)
+    {
         return SolvencyReport(0, 0, 0, 0, 0, 0, 0);
     }
 
@@ -232,28 +256,32 @@ contract PoolReserve is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 nonce,
         uint256 deadline
     ) public view returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19Ethereum Signed Message:\n32",
-                keccak256(
-                    abi.encode(
-                        CLAIM_TYPEHASH,
-                        trader,
-                        amount,
-                        nonce,
-                        deadline,
-                        address(this),
-                        block.chainid
+        return
+            keccak256(
+                abi.encodePacked(
+                    "\x19Ethereum Signed Message:\n32",
+                    keccak256(
+                        abi.encode(
+                            CLAIM_TYPEHASH,
+                            trader,
+                            amount,
+                            nonce,
+                            deadline,
+                            address(this),
+                            block.chainid
+                        )
                     )
                 )
-            )
-        );
+            );
     }
 
     /// @notice UUPS upgrade authorization: only PoolReserve owner can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    function _recoverSigner(bytes32 digest, bytes calldata signature) internal pure returns (address) {
+    function _recoverSigner(
+        bytes32 digest,
+        bytes calldata signature
+    ) internal pure returns (address) {
         if (signature.length != 65) revert InvalidSignature();
 
         bytes32 r;
