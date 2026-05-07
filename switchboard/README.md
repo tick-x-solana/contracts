@@ -2,6 +2,8 @@
 
 This folder contains the Switchboard-side workflow for Solana `PriceIntegrity`.
 
+It also contains a mock `Settlement` batch generator for the Solana settlement program.
+
 ## Modes
 
 There are 2 modes:
@@ -171,6 +173,36 @@ Current devnet deployment config is stored at:
 ```text
 switchboard/deployments/price-integrity-devnet.json
 ```
+
+## Settlement mock batches
+
+Generate the next settlement batch file for Solana `Settlement`:
+
+```bash
+npm run settlement:devnet
+```
+
+This writes:
+
+```text
+switchboard/deployments/settlement-devnet.json
+```
+
+The file contains:
+
+- `windowStart`
+- `windowEnd`
+- `batches[]`
+  - `batchId`
+  - `merkleRoot`
+  - `totalPayout`
+  - `withdrawableCap`
+  - `settlementCount`
+  - `settlements[]`
+
+Use that JSON with:
+
+- `sol-contracts/settlement/client/src/bin/commit_from_json.rs`
 
 ## Default Switchboard devnet queue
 
