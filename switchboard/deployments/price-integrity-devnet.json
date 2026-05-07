@@ -1,0 +1,65 @@
+{
+  "network": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "queue": "EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7",
+  "switchboardQuoteProgramId": "orac1eFjzWL5R3RbbdMV68K9H6TaCVVcL6LjvQQWAbz",
+  "mode": "synthetic-static",
+  "maxAgeSlots": 30,
+  "feedIds": [
+    "0x96268bd46d61a97870d3f9408858fcdddd0d1d0769422ec8a5bbb791dc6af39f",
+    "0x5e9237d03e40703bb836c27655806d4cf5214150ebcd3307ec9fcee9de27f910",
+    "0xac90206d6ad7491648c349c2efb8436fc743eb81e9bbeb242b2467f436a4a718",
+    "0x983526c68ffaa9a120b6ab6126ed7ef1741e1daa48cf5775345771a0ab778183",
+    "0x83091f9084f1a96ccf65be68df5eccbc85eb8eaa16785bfdeb8603bc41b5e261",
+    "0xb97a247b3686aeb21e0ed8c50be0dd4093b7ab1e03a9ee7858444bcdb4c19e9d"
+  ],
+  "feedIdsCsv": "0x96268bd46d61a97870d3f9408858fcdddd0d1d0769422ec8a5bbb791dc6af39f,0x5e9237d03e40703bb836c27655806d4cf5214150ebcd3307ec9fcee9de27f910,0xac90206d6ad7491648c349c2efb8436fc743eb81e9bbeb242b2467f436a4a718,0x983526c68ffaa9a120b6ab6126ed7ef1741e1daa48cf5775345771a0ab778183,0x83091f9084f1a96ccf65be68df5eccbc85eb8eaa16785bfdeb8603bc41b5e261,0xb97a247b3686aeb21e0ed8c50be0dd4093b7ab1e03a9ee7858444bcdb4c19e9d",
+  "feeds": {
+    "ohlc_mae_bps": {
+      "feedHash": "0x96268bd46d61a97870d3f9408858fcdddd0d1d0769422ec8a5bbb791dc6af39f",
+      "quoteAccount": "DeiRua1VZysHThdzp8NTs39otdhUKC5hBb6Jy2UQsYkF",
+      "mockValue": 3
+    },
+    "ohlc_p95_bps": {
+      "feedHash": "0x5e9237d03e40703bb836c27655806d4cf5214150ebcd3307ec9fcee9de27f910",
+      "quoteAccount": "5EwYFSGK45fSDeUeF7SeVqL4B4eLpbR71UdVAV5ubXy1",
+      "mockValue": 5
+    },
+    "ohlc_max_bps": {
+      "feedHash": "0xac90206d6ad7491648c349c2efb8436fc743eb81e9bbeb242b2467f436a4a718",
+      "quoteAccount": "4jP8snLiXHooBCqCppafEeDngZSkwMvV3vUnVPPjfmjr",
+      "mockValue": 6
+    },
+    "direction_match_bps": {
+      "feedHash": "0x983526c68ffaa9a120b6ab6126ed7ef1741e1daa48cf5775345771a0ab778183",
+      "quoteAccount": "2DG5ngiGJ1jZBCNnHniQPsa1oLQo7RpwoLpP1FydRKdg",
+      "mockValue": 10000
+    },
+    "outlier_count": {
+      "feedHash": "0x83091f9084f1a96ccf65be68df5eccbc85eb8eaa16785bfdeb8603bc41b5e261",
+      "quoteAccount": "EEBMsXCnp6cQa8rXNLwyuzBc69HowZAEZmSZ9gXEK16b",
+      "mockValue": 0
+    },
+    "score_bps": {
+      "feedHash": "0xb97a247b3686aeb21e0ed8c50be0dd4093b7ab1e03a9ee7858444bcdb4c19e9d",
+      "quoteAccount": "BETBJHpULhztBWjNtZcotezgBSj1fk8HKcfmtjzKXCWk",
+      "mockValue": 9650
+    }
+  },
+  "syntheticSnapshot": {
+    "epochId": 1975693,
+    "windowStart": 1778123700,
+    "windowEnd": 1778124600,
+    "candleCount": 900,
+    "internalCandlesHash": "0x79ac670fd102e4f04c69a94621247ea42c1c8e22f3f03b10e224784476ad702d",
+    "chainlinkCandlesHash": "0xed37bea0c1ef2c7dcfce9a4729f5d6c393e41972877832bbf3234f90f205d190",
+    "metrics": {
+      "ohlcMaeBps": 3,
+      "ohlcP95Bps": 5,
+      "ohlcMaxBps": 6,
+      "directionMatchBps": 10000,
+      "outlierCount": 0,
+      "scoreBps": 9650
+    }
+  }
+}

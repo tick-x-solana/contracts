@@ -1,1 +1,3 @@
 cre-gcp-prediction-market-demo
+**/target/**
+**/node_modules/
