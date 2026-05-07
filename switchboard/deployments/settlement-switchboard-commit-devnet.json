@@ -1,0 +1,108 @@
+{
+  "network": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "queue": "EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7",
+  "switchboardQuoteProgramId": "orac1eFjzWL5R3RbbdMV68K9H6TaCVVcL6LjvQQWAbz",
+  "mode": "synthetic-static",
+  "maxAgeSlots": 30,
+  "feedIds": [
+    "0x5a92d1dd9e735e9d0fd7a67bebfe1c09d1bd68084c76f2e3ad104347707629ba",
+    "0xcd35de3767d57d88b650576a7ffc405ea1827a54cfe350566f258207d83df386",
+    "0x3ac2c3ca6b2e5b734eed425b7eaf645b7f69700d6974b17f52be450334099a72",
+    "0xefb8e0ca7483e03f8d8b554b07a79d20578abb34284ac3371483cef02d656f84",
+    "0xcfa0c36f9c0c86f482d5e5cd657bdde3e31019fbd7e988d475ad3ed56e216e52",
+    "0x9532114589687ac642891eda5f6d5e08b2fb74778d0bff2f532dba17c9ee99c5",
+    "0x116fff3d989d897a0610239d70fbf96bc83ed3528ec76c31da2e59d3dd1218a6",
+    "0x27113d5bd7dcc548857154f1525c8ed27117248bbb084f93c1665455a4a42e49",
+    "0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893",
+    "0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893",
+    "0xd4c75781e1fcb8e7fe6a6d4fc2aa7985ca0c7ff103b4c896e2524c964ea085ba",
+    "0xff0dde7bcb4cb9fcb8ae0bcd29b4dad11bbafdc23d5bed5ae3cac1875fad12da"
+  ],
+  "feedIdsCsv": "0x5a92d1dd9e735e9d0fd7a67bebfe1c09d1bd68084c76f2e3ad104347707629ba,0xcd35de3767d57d88b650576a7ffc405ea1827a54cfe350566f258207d83df386,0x3ac2c3ca6b2e5b734eed425b7eaf645b7f69700d6974b17f52be450334099a72,0xefb8e0ca7483e03f8d8b554b07a79d20578abb34284ac3371483cef02d656f84,0xcfa0c36f9c0c86f482d5e5cd657bdde3e31019fbd7e988d475ad3ed56e216e52,0x9532114589687ac642891eda5f6d5e08b2fb74778d0bff2f532dba17c9ee99c5,0x116fff3d989d897a0610239d70fbf96bc83ed3528ec76c31da2e59d3dd1218a6,0x27113d5bd7dcc548857154f1525c8ed27117248bbb084f93c1665455a4a42e49,0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893,0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893,0xd4c75781e1fcb8e7fe6a6d4fc2aa7985ca0c7ff103b4c896e2524c964ea085ba,0xff0dde7bcb4cb9fcb8ae0bcd29b4dad11bbafdc23d5bed5ae3cac1875fad12da",
+  "quoteAccount": "EaZk8dRqrqoQx8oi6vZot4sUpCSmWNGup7ZaSXPK6Nna",
+  "selectedBatch": {
+    "batchId": "0x208221b63bbd33e28d1d3a1acba580fcc5ce2863ffcd6bbc5fb4bfd3463c60e5",
+    "merkleRoot": "0xb1fcc2a6a5eeaee368f4fbd046fa48294ce36b544ee197ba300b9f3468f62946",
+    "totalPayout": 400000000,
+    "withdrawableCap": 400000000,
+    "windowStart": 1778145300,
+    "windowEnd": 1778146200,
+    "settlementCount": 1,
+    "settlements": [
+      {
+        "account": "0x150261fbe7bd3ec52141414ddc821596dee02764",
+        "betId": "bet_1778145300_0_0",
+        "outcome": "WIN",
+        "payout": "400000000",
+        "originalStake": "100000000"
+      }
+    ]
+  },
+  "feeds": {
+    "merkle_root_0": {
+      "feedHash": "0x5a92d1dd9e735e9d0fd7a67bebfe1c09d1bd68084c76f2e3ad104347707629ba",
+      "quoteAccount": "cEKdCKVYpWZjUEQbsXMhWrLDfshGrzY5f64odWWouQB",
+      "mockValue": "2986132134"
+    },
+    "merkle_root_1": {
+      "feedHash": "0xcd35de3767d57d88b650576a7ffc405ea1827a54cfe350566f258207d83df386",
+      "quoteAccount": "BMee7z3AH3XiwrcgauKKqqYxmFQLyHhJybb2x1jj1fXt",
+      "mockValue": "2783882979"
+    },
+    "merkle_root_2": {
+      "feedHash": "0x3ac2c3ca6b2e5b734eed425b7eaf645b7f69700d6974b17f52be450334099a72",
+      "quoteAccount": "43H4hXYbqA6wQhujjkiYwUGfugBZpybdQxQY7meb7p9S",
+      "mockValue": "1760885712"
+    },
+    "merkle_root_3": {
+      "feedHash": "0xefb8e0ca7483e03f8d8b554b07a79d20578abb34284ac3371483cef02d656f84",
+      "quoteAccount": "558st31C7YhAgMf8yLvToKFhgqta9SionSAU51EPLZZu",
+      "mockValue": "1190807593"
+    },
+    "merkle_root_4": {
+      "feedHash": "0xcfa0c36f9c0c86f482d5e5cd657bdde3e31019fbd7e988d475ad3ed56e216e52",
+      "quoteAccount": "7hj5fxRg3yc2kztHiy6YusFwNNyXuJC77ELH6UxK88tX",
+      "mockValue": "1289972564"
+    },
+    "merkle_root_5": {
+      "feedHash": "0x9532114589687ac642891eda5f6d5e08b2fb74778d0bff2f532dba17c9ee99c5",
+      "quoteAccount": "3t1JrZywPXSkCUf87qNVei4beebd79V7CfnPC4DFZarW",
+      "mockValue": "1323407290"
+    },
+    "merkle_root_6": {
+      "feedHash": "0x116fff3d989d897a0610239d70fbf96bc83ed3528ec76c31da2e59d3dd1218a6",
+      "quoteAccount": "FqdHCNCQuNoWRoupA8zZ99jT4rAFXnaTMsmafyd33Xi4",
+      "mockValue": "806068020"
+    },
+    "merkle_root_7": {
+      "feedHash": "0x27113d5bd7dcc548857154f1525c8ed27117248bbb084f93c1665455a4a42e49",
+      "quoteAccount": "E4tMQp3ifm9wFEThYubPKM6NK9nt453AD9EH5r6Ph4jW",
+      "mockValue": "1760962886"
+    },
+    "total_payout": {
+      "feedHash": "0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893",
+      "quoteAccount": "85gXnNbY5zRsEQ3JVTjMoKgVFs4vvNnogitGCGoNnq5F",
+      "mockValue": "400000000"
+    },
+    "withdrawable_cap": {
+      "feedHash": "0x2896e75e956fb952803808e87a273372679580140ac09cc4e6c32b234fc52893",
+      "quoteAccount": "85gXnNbY5zRsEQ3JVTjMoKgVFs4vvNnogitGCGoNnq5F",
+      "mockValue": "400000000"
+    },
+    "window_start": {
+      "feedHash": "0xd4c75781e1fcb8e7fe6a6d4fc2aa7985ca0c7ff103b4c896e2524c964ea085ba",
+      "quoteAccount": "2T33cLpLfytHEdwJ1diW1LaCxosnM216JZJAzYqiebLQ",
+      "mockValue": "1778145300"
+    },
+    "window_end": {
+      "feedHash": "0xff0dde7bcb4cb9fcb8ae0bcd29b4dad11bbafdc23d5bed5ae3cac1875fad12da",
+      "quoteAccount": "8dqx1wjPQFcjLM6fQybNm9TFHV8RiB6f8VT1cztQ3ti8",
+      "mockValue": "1778146200"
+    }
+  },
+  "batchIndex": 0,
+  "generatedAt": 1778146702,
+  "windowStart": 1778145300,
+  "windowEnd": 1778146200
+}

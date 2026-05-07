@@ -1,6 +1,7 @@
 use std::{error::Error, path::PathBuf, str::FromStr};
 
 use borsh::BorshSerialize;
+use sha2::{Digest, Sha256};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -14,9 +15,11 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use tickx_settlement_sol::{
-    instruction::SettlementInstruction,
+    instruction::{SettlementInstruction, SETTLEMENT_FEED_COUNT},
     state::{BATCH_SEED, CONFIG_SEED, PAID_SEED},
 };
+
+const QUOTE_PROGRAM_ID_STR: &str = "orac1eFjzWL5R3RbbdMV68K9H6TaCVVcL6LjvQQWAbz";
 
 pub struct ClientArgs {
     pub rpc_url: String,
@@ -78,6 +81,39 @@ pub fn parse_hex_32(input: &str) -> Result<[u8; 32], Box<dyn Error>> {
     Ok(out)
 }
 
+pub fn parse_feed_ids_csv(input: &str) -> Result<[[u8; 32]; SETTLEMENT_FEED_COUNT], Box<dyn Error>> {
+    let parts: Vec<&str> = input.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if parts.len() != SETTLEMENT_FEED_COUNT {
+        return Err(format!(
+            "expected {} comma-separated feed IDs, got {}",
+            SETTLEMENT_FEED_COUNT,
+            parts.len()
+        )
+        .into());
+    }
+
+    let mut feed_ids = [[0_u8; 32]; SETTLEMENT_FEED_COUNT];
+    for (idx, part) in parts.iter().enumerate() {
+        feed_ids[idx] = parse_hex_32(part)?;
+    }
+    Ok(feed_ids)
+}
+
+pub fn derive_quote_account(
+    queue: &Pubkey,
+    feed_ids: &[[u8; 32]; SETTLEMENT_FEED_COUNT],
+) -> Pubkey {
+    let mut hasher = Sha256::new();
+    for feed_id in feed_ids {
+        hasher.update(feed_id);
+    }
+    let feed_ids_hash = hasher.finalize();
+
+    let quote_program_id =
+        Pubkey::from_str(QUOTE_PROGRAM_ID_STR).expect("valid switchboard quote program id");
+    Pubkey::find_program_address(&[queue.as_ref(), &feed_ids_hash], &quote_program_id).0
+}
+
 pub fn build_instruction(
     program_id: Pubkey,
     instruction: SettlementInstruction,
@@ -120,6 +156,26 @@ pub fn commit_accounts(
         AccountMeta::new(*batch, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(solana_sdk::sysvar::clock::id(), false),
+    ]
+}
+
+pub fn commit_switchboard_accounts(
+    payer: &Pubkey,
+    config: &Pubkey,
+    batch: &Pubkey,
+    quote_account: &Pubkey,
+    queue: &Pubkey,
+) -> Vec<AccountMeta> {
+    vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(*config, false),
+        AccountMeta::new(*batch, false),
+        AccountMeta::new(*quote_account, false),
+        AccountMeta::new_readonly(*queue, false),
+        AccountMeta::new_readonly(solana_sdk::sysvar::clock::id(), false),
+        AccountMeta::new_readonly(solana_sdk::sysvar::slot_hashes::id(), false),
+        AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ]
 }
 

@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let instruction = common::build_instruction(
         client_args.program_id,
-        SettlementInstruction::CommitSettlementBatch {
+        SettlementInstruction::CommitDemoSettlementBatch {
             batch_id,
             merkle_root,
             total_payout: batch.total_payout,

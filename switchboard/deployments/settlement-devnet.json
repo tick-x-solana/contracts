@@ -1,81 +1,24 @@
 {
   "network": "devnet",
   "mode": "synthetic-batches",
-  "generatedAt": 1778127073,
-  "windowStart": 1778125500,
-  "windowEnd": 1778126400,
+  "generatedAt": 1778146684,
+  "windowStart": 1778145300,
+  "windowEnd": 1778146200,
   "batches": [
     {
-      "batchId": "0x2b92e2e7ba5298a469447dd84429a2f4cb2653c0be803808af617dfa96dc8a93",
-      "merkleRoot": "0x9f2750bd14be634b216bbf1d033eaa0eb21a137e8e9aac7051518b1068fdd295",
-      "totalPayout": 1100000000,
-      "withdrawableCap": 500000000,
-      "windowStart": 1778125500,
-      "windowEnd": 1778126400,
-      "settlementCount": 3,
-      "settlements": [
-        {
-          "account": "0x4c7531c8293cef504da8258c45a73d95d9a4f521",
-          "betId": "bet_1778125500_0_1",
-          "outcome": "WIN",
-          "payout": "400000000",
-          "originalStake": "100000000"
-        },
-        {
-          "account": "0xb4c7531c8293cef504da8258c45a73d95d9a4f52",
-          "betId": "bet_1778125500_0_0",
-          "outcome": "WIN",
-          "payout": "500000000",
-          "originalStake": "100000000"
-        },
-        {
-          "account": "0xc7531c8293cef504da8258c45a73d95d9a4f521e",
-          "betId": "bet_1778125500_0_2",
-          "outcome": "WIN",
-          "payout": "200000000",
-          "originalStake": "100000000"
-        }
-      ]
-    },
-    {
-      "batchId": "0x54dd5f45e52ab7af6b163011bd6c77e48cb57dc9f1af75cb9429057d93bfae32",
-      "merkleRoot": "0xc70c56556a7774433ba0456e2786f370f509a348d954b617425f02994df86bf9",
-      "totalPayout": 0,
-      "withdrawableCap": 300000000,
-      "windowStart": 1778125500,
-      "windowEnd": 1778126400,
-      "settlementCount": 2,
-      "settlements": [
-        {
-          "account": "0x40b4e31b0c40aa65ec2b4525ee4c6b68577d0e47",
-          "betId": "bet_1778125500_1_1",
-          "outcome": "LOSE",
-          "payout": "300000000",
-          "originalStake": "100000000"
-        },
-        {
-          "account": "0x840b4e31b0c40aa65ec2b4525ee4c6b68577d0e4",
-          "betId": "bet_1778125500_1_0",
-          "outcome": "LOSE",
-          "payout": "200000000",
-          "originalStake": "100000000"
-        }
-      ]
-    },
-    {
-      "batchId": "0xc744f1619ba37f77fcc0b75b7a698fcac4d75ffa1e9de59a9dc7e9e106b131c7",
-      "merkleRoot": "0x03f9f3ad0e3e6587eb884cce3cb4ba18f08c8e428963166db954bf4dcdf2ad42",
-      "totalPayout": 200000000,
-      "withdrawableCap": 200000000,
-      "windowStart": 1778125500,
-      "windowEnd": 1778126400,
+      "batchId": "0x208221b63bbd33e28d1d3a1acba580fcc5ce2863ffcd6bbc5fb4bfd3463c60e5",
+      "merkleRoot": "0xb1fcc2a6a5eeaee368f4fbd046fa48294ce36b544ee197ba300b9f3468f62946",
+      "totalPayout": 400000000,
+      "withdrawableCap": 400000000,
+      "windowStart": 1778145300,
+      "windowEnd": 1778146200,
       "settlementCount": 1,
       "settlements": [
         {
-          "account": "0x0fe7423a043a68b4fa7e2dea7aaec4898c90f23c",
-          "betId": "bet_1778125500_2_0",
+          "account": "0x150261fbe7bd3ec52141414ddc821596dee02764",
+          "betId": "bet_1778145300_0_0",
           "outcome": "WIN",
-          "payout": "200000000",
+          "payout": "400000000",
           "originalStake": "100000000"
         }
       ]

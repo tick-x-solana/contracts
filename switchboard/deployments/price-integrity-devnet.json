@@ -47,12 +47,12 @@
     }
   },
   "syntheticSnapshot": {
-    "epochId": 1975693,
-    "windowStart": 1778123700,
-    "windowEnd": 1778124600,
+    "epochId": 1975718,
+    "windowStart": 1778146200,
+    "windowEnd": 1778147100,
     "candleCount": 900,
-    "internalCandlesHash": "0x79ac670fd102e4f04c69a94621247ea42c1c8e22f3f03b10e224784476ad702d",
-    "chainlinkCandlesHash": "0xed37bea0c1ef2c7dcfce9a4729f5d6c393e41972877832bbf3234f90f205d190",
+    "internalCandlesHash": "0x97ed05ef0f236f2f5f5d33ba8d2addffb42190dca5f61cbdff2544f65955e859",
+    "chainlinkCandlesHash": "0x7e746cda3cfa996dcfb13155d73561a6e3d31726d3d49481cca29da20342230a",
     "metrics": {
       "ohlcMaeBps": 3,
       "ohlcP95Bps": 5,

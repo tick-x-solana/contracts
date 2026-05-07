@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use switchboard_on_demand::solana_program::pubkey::Pubkey;
+
+use crate::instruction::SETTLEMENT_FEED_COUNT;
 
 pub const CONFIG_SEED: &[u8] = b"settlement-config";
 pub const BATCH_SEED: &[u8] = b"settlement-batch";
@@ -9,12 +11,16 @@ pub const PAID_SEED: &[u8] = b"settlement-paid";
 pub struct SettlementConfig {
     pub is_initialized: bool,
     pub owner: Pubkey,
+    pub quote_account: Pubkey,
+    pub queue: Pubkey,
+    pub max_age_slots: u64,
+    pub field_feed_ids: [[u8; 32]; SETTLEMENT_FEED_COUNT],
     pub batch_count: u64,
     pub bump: u8,
 }
 
 impl SettlementConfig {
-    pub const LEN: usize = 1 + 32 + 8 + 1;
+    pub const LEN: usize = 1 + 32 + 32 + 32 + 8 + (32 * SETTLEMENT_FEED_COUNT) + 8 + 1;
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]

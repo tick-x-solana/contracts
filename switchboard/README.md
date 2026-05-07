@@ -204,6 +204,57 @@ Use that JSON with:
 
 - `sol-contracts/settlement/client/src/bin/commit_from_json.rs`
 
+Deploy 12 settlement feeds once:
+
+```bash
+npm run settlement:deploy:devnet
+```
+
+This writes:
+
+```text
+switchboard/deployments/settlement-switchboard-devnet.json
+```
+
+That file contains:
+
+- `queue`
+- `quoteAccount`
+- `maxAgeSlots`
+- `feedIds`
+- `feedIdsCsv`
+
+Prepare one batch commit payload without redeploying feeds:
+
+```bash
+npm run settlement:prepare:commit:devnet
+```
+
+This writes:
+
+```text
+switchboard/deployments/settlement-switchboard-commit-devnet.json
+```
+
+That file contains:
+
+- stable feed config
+- `batchIndex`
+- `windowStart`
+- `windowEnd`
+- `selectedBatch`
+
+For a stable TEE-compatible deployment:
+
+1. run `npm run server` on a public host
+2. set `SWITCHBOARD_FAKE_METRICS=0`
+3. point `METRICS_BASE_URL` at that host
+4. run `npm run settlement:deploy:devnet` once
+5. initialize `sol-contracts/settlement` from `settlement-switchboard-devnet.json`
+6. refresh the same feed IDs for each new batch window
+7. run `npm run settlement:prepare:commit:devnet`
+8. commit using `settlement-switchboard-commit-devnet.json`
+
 ## Default Switchboard devnet queue
 
 From Switchboard docs:

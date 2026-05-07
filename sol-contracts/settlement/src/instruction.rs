@@ -1,12 +1,28 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::program_error::ProgramError;
+use switchboard_on_demand::solana_program::{program_error::ProgramError, pubkey::Pubkey};
 
 use crate::error::SettlementError;
 
+pub const SETTLEMENT_FEED_COUNT: usize = 12;
+
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
 pub enum SettlementInstruction {
-    Initialize,
-    CommitSettlementBatch {
+    Initialize {
+        quote_account: Pubkey,
+        queue: Pubkey,
+        max_age_slots: u64,
+        field_feed_ids: [[u8; 32]; SETTLEMENT_FEED_COUNT],
+    },
+    CommitSwitchboardSettlementBatch {
+        batch_id: [u8; 32],
+    },
+    SetSwitchboardConfig {
+        quote_account: Pubkey,
+        queue: Pubkey,
+        max_age_slots: u64,
+        field_feed_ids: [[u8; 32]; SETTLEMENT_FEED_COUNT],
+    },
+    CommitDemoSettlementBatch {
         batch_id: [u8; 32],
         merkle_root: [u8; 32],
         total_payout: u64,

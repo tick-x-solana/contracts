@@ -8,7 +8,10 @@
     "deploy:devnet": "tsx src/deploy.ts",
     "simulate": "tsx src/simulate.ts",
     "snapshot:devnet": "tsx src/snapshot.ts",
-    "settlement:devnet": "tsx src/settlement.ts"
+    "settlement:devnet": "tsx src/settlement.ts",
+    "settlement:deploy:devnet": "tsx src/settlement_deploy.ts",
+    "settlement:prepare:commit:devnet": "tsx src/settlement_prepare_commit.ts",
+    "settlement:commit:devnet": "tsx src/settlement_commit.ts"
   },
   "dependencies": {
     "@switchboard-xyz/common": "4.1.0",
