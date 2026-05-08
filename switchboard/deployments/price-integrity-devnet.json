@@ -51,8 +51,8 @@
     "windowStart": 1778146200,
     "windowEnd": 1778147100,
     "candleCount": 900,
-    "internalCandlesHash": "0x97ed05ef0f236f2f5f5d33ba8d2addffb42190dca5f61cbdff2544f65955e859",
-    "chainlinkCandlesHash": "0x7e746cda3cfa996dcfb13155d73561a6e3d31726d3d49481cca29da20342230a",
+    "internalCandlesHash": "0x2a6272348c52f4e4e9e540a9f6ce4eabd098d3f7e261e001b2c800e51c58b559",
+    "chainlinkCandlesHash": "0x3d4b79f703bd3caa49de0b6531587bc1a3270980cdd5c2c7897e55e6eabfeb74",
     "metrics": {
       "ohlcMaeBps": 3,
       "ohlcP95Bps": 5,

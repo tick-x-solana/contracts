@@ -1,0 +1,278 @@
+{
+  "version": "0.1.0",
+  "name": "tickx_pool_reserve_sol",
+  "metadata": {
+    "framework": "native-solana",
+    "serialization": "borsh",
+    "notes": [
+      "This is a custom interface manifest for a non-Anchor Solana program.",
+      "Instruction enum variants are serialized with Borsh in declared order."
+    ]
+  },
+  "programDerivedAddresses": [
+    {
+      "name": "config",
+      "seedStrings": ["pool-reserve-config"]
+    },
+    {
+      "name": "vault",
+      "seedStrings": ["pool-reserve-vault"]
+    },
+    {
+      "name": "traderPosition",
+      "seedStrings": ["trader-position"],
+      "seedAccounts": ["trader"]
+    }
+  ],
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminant": 0,
+      "args": [
+        {
+          "name": "claimSigner",
+          "type": "pubkey"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "config"
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "vault"
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ]
+    },
+    {
+      "name": "depositTrader",
+      "discriminant": 1,
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "config"
+        },
+        {
+          "name": "traderPosition",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "traderPosition"
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "vault"
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ]
+    },
+    {
+      "name": "claimTrader",
+      "discriminant": 2,
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "claimSigner",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "trader",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "config"
+        },
+        {
+          "name": "traderPosition",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "traderPosition"
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "vault"
+        }
+      ]
+    },
+    {
+      "name": "setClaimSigner",
+      "discriminant": 3,
+      "args": [
+        {
+          "name": "newClaimSigner",
+          "type": "pubkey"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "config"
+        },
+        {
+          "name": "vault",
+          "isMut": false,
+          "isSigner": false,
+          "pda": "vault"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ReserveConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "isInitialized",
+            "type": "bool"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "claimSigner",
+            "type": "pubkey"
+          },
+          {
+            "name": "totalTraderDeposits",
+            "type": "u64"
+          },
+          {
+            "name": "configBump",
+            "type": "u8"
+          },
+          {
+            "name": "vaultBump",
+            "type": "u8"
+          }
+        ]
+      },
+      "space": 75
+    },
+    {
+      "name": "TraderPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "isInitialized",
+            "type": "bool"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "balance",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      },
+      "space": 50
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "InvalidInstruction",
+      "msg": "invalid instruction"
+    },
+    {
+      "code": 1,
+      "name": "InvalidAmount",
+      "msg": "invalid amount"
+    },
+    {
+      "code": 2,
+      "name": "Unauthorized",
+      "msg": "unauthorized"
+    },
+    {
+      "code": 3,
+      "name": "AlreadyInitialized",
+      "msg": "already initialized"
+    },
+    {
+      "code": 4,
+      "name": "Uninitialized",
+      "msg": "uninitialized"
+    },
+    {
+      "code": 5,
+      "name": "InvalidPda",
+      "msg": "invalid pda"
+    },
+    {
+      "code": 6,
+      "name": "InsufficientBalance",
+      "msg": "insufficient balance"
+    },
+    {
+      "code": 7,
+      "name": "InsufficientCollateral",
+      "msg": "insufficient collateral"
+    }
+  ]
+}
