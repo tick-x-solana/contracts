@@ -7,6 +7,7 @@ use crate::error::PoolReserveError;
 pub enum PoolReserveInstruction {
     Initialize { claim_signer: Pubkey },
     DepositTrader { amount: u64 },
+    WithdrawTrader { amount: u64 },
     ClaimTrader { amount: u64 },
     SetClaimSigner { new_claim_signer: Pubkey },
 }
@@ -16,4 +17,3 @@ impl PoolReserveInstruction {
         Self::try_from_slice(input).map_err(|_| PoolReserveError::InvalidInstruction.into())
     }
 }
-

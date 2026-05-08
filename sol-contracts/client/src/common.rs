@@ -124,3 +124,16 @@ pub fn deposit_accounts(
     ]
 }
 
+pub fn withdraw_accounts(
+    trader: &Pubkey,
+    config: &Pubkey,
+    trader_position: &Pubkey,
+    vault: &Pubkey,
+) -> Vec<AccountMeta> {
+    vec![
+        AccountMeta::new(*trader, true),
+        AccountMeta::new(*config, false),
+        AccountMeta::new(*trader_position, false),
+        AccountMeta::new(*vault, false),
+    ]
+}

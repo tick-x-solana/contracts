@@ -34,6 +34,9 @@ impl Processor {
             PoolReserveInstruction::DepositTrader { amount } => {
                 Self::process_deposit_trader(program_id, accounts, amount)
             }
+            PoolReserveInstruction::WithdrawTrader { amount } => {
+                Self::process_withdraw_trader(program_id, accounts, amount)
+            }
             PoolReserveInstruction::ClaimTrader { amount } => {
                 Self::process_claim_trader(program_id, accounts, amount)
             }
@@ -256,6 +259,70 @@ impl Processor {
         config.serialize(&mut &mut config_account.data.borrow_mut()[..])?;
 
         msg!("trader claimed {}", amount);
+        Ok(())
+    }
+
+    fn process_withdraw_trader<'a>(
+        program_id: &Pubkey,
+        accounts: &'a [AccountInfo<'a>],
+        amount: u64,
+    ) -> Result<(), ProgramError> {
+        if amount == 0 {
+            return Err(PoolReserveError::InvalidAmount.into());
+        }
+
+        let account_info_iter = &mut accounts.iter();
+        let trader = next_account_info(account_info_iter)?;
+        let config_account = next_account_info(account_info_iter)?;
+        let trader_position_account = next_account_info(account_info_iter)?;
+        let vault_account = next_account_info(account_info_iter)?;
+
+        if !trader.is_signer {
+            return Err(PoolReserveError::Unauthorized.into());
+        }
+
+        let mut config = Self::load_config(program_id, config_account, vault_account)?;
+        let (expected_trader_position, _) = Pubkey::find_program_address(
+            &[TRADER_POSITION_SEED, trader.key.as_ref()],
+            program_id,
+        );
+        if expected_trader_position != *trader_position_account.key {
+            return Err(PoolReserveError::InvalidPda.into());
+        }
+
+        let mut trader_position =
+            TraderPosition::try_from_slice(&trader_position_account.data.borrow())?;
+        if trader_position.trader != *trader.key {
+            return Err(PoolReserveError::Unauthorized.into());
+        }
+        if trader_position.balance < amount {
+            return Err(PoolReserveError::InsufficientBalance.into());
+        }
+
+        let rent = Rent::get()?;
+        let minimum_vault_balance = rent.minimum_balance(vault_account.data_len());
+        let vault_lamports = vault_account.lamports();
+        if vault_lamports < minimum_vault_balance.saturating_add(amount) {
+            return Err(PoolReserveError::InsufficientCollateral.into());
+        }
+
+        trader_position.balance -= amount;
+        trader_position.nonce = trader_position
+            .nonce
+            .checked_add(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        config.total_trader_deposits = config
+            .total_trader_deposits
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+
+        **vault_account.try_borrow_mut_lamports()? -= amount;
+        **trader.try_borrow_mut_lamports()? += amount;
+
+        trader_position.serialize(&mut &mut trader_position_account.data.borrow_mut()[..])?;
+        config.serialize(&mut &mut config_account.data.borrow_mut()[..])?;
+
+        msg!("trader withdrew {}", amount);
         Ok(())
     }
 

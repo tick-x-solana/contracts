@@ -100,8 +100,43 @@
       ]
     },
     {
-      "name": "claimTrader",
+      "name": "withdrawTrader",
       "discriminant": 2,
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "config",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "config"
+        },
+        {
+          "name": "traderPosition",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "traderPosition"
+        },
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false,
+          "pda": "vault"
+        }
+      ]
+    },
+    {
+      "name": "claimTrader",
+      "discriminant": 3,
       "args": [
         {
           "name": "amount",
@@ -141,7 +176,7 @@
     },
     {
       "name": "setClaimSigner",
-      "discriminant": 3,
+      "discriminant": 4,
       "args": [
         {
           "name": "newClaimSigner",
