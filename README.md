@@ -1,6 +1,9 @@
 # TickX Reserve
 
-`Rust` `Solana` `Switchboard` `TypeScript`
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Solana](https://img.shields.io/badge/Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)
+![Switchboard](https://img.shields.io/badge/Switchboard-0F172A?style=for-the-badge&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
 TickX Reserve is the onchain reserve and market-integrity layer for TickX.
 
