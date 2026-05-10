@@ -4,8 +4,9 @@ This folder contains the Switchboard-side integration for Solana `PriceIntegrity
 
 `PriceIntegrity` now runs only on the real API-backed path:
 
-- metrics are fetched from the TickX API
-- the public HTTP server exposes those metrics to Switchboard jobs
+- OHLCV is fetched from the TickX API
+- an adapter server in this repo computes integrity metrics from OHLCV
+- that adapter server exposes metric endpoints to Switchboard jobs
 - feeds are deployed once on devnet
 - a cranker sends one combined Solana transaction:
   - Switchboard managed update bundle
@@ -21,6 +22,7 @@ Settlement tooling is still present separately and remains experimental.
   - fetches real OHLC data
   - computes the current 15-minute `PriceIntegrity` snapshot
 - `src/server.ts`
+  - adapter service
   - exposes metric endpoints and the full computed report
 - `src/jobs.ts`
   - builds HTTP-backed `HttpTask -> JsonParseTask` jobs
@@ -35,6 +37,17 @@ Settlement tooling is still present separately and remains experimental.
   - sends one combined transaction
 - `src/simulate.ts`
   - simulates the current HTTP-backed jobs against Crossbar
+
+## Offchain compute pipeline
+
+The current architecture is:
+
+1. fetch OHLCV from TickX internal source
+2. fetch OHLCV from Chainlink / Binance reference source
+3. compare both datasets inside `worker.ts`
+4. derive six scalar metrics
+5. expose those scalars through adapter endpoints in `server.ts`
+6. let Switchboard jobs read those adapter endpoints
 
 ## Environment
 
@@ -51,6 +64,8 @@ Copy `.env.example` to `.env` and fill:
 Notes:
 
 - `METRICS_BASE_URL` must be publicly reachable by Switchboard oracles.
+- the upstream TickX API only exposes OHLCV; it does not expose `/price-integrity?...` metric endpoints by itself.
+- the adapter routes in this repo are namespaced under `/adapter/...` to distinguish them from upstream APIs.
 - the HTTP server must stay available continuously if you expect feeds to update continuously.
 - the cranker process can run privately; only the metrics server must be public.
 
@@ -70,16 +85,18 @@ npm run server
 The server exposes:
 
 ```text
-GET /price-integrity?metric=ohlc_mae_bps
-GET /price-integrity?metric=ohlc_p95_bps
-GET /price-integrity?metric=ohlc_max_bps
-GET /price-integrity?metric=direction_match_bps
-GET /price-integrity?metric=outlier_count
-GET /price-integrity?metric=score_bps
-GET /price-integrity/report
+GET /adapter/price-integrity/metric?name=ohlc_mae_bps
+GET /adapter/price-integrity/metric?name=ohlc_p95_bps
+GET /adapter/price-integrity/metric?name=ohlc_max_bps
+GET /adapter/price-integrity/metric?name=direction_match_bps
+GET /adapter/price-integrity/metric?name=outlier_count
+GET /adapter/price-integrity/metric?name=score_bps
+GET /adapter/price-integrity/report
 ```
 
-`/price-integrity/report` returns:
+These are adapter endpoints implemented by `src/server.ts`, not endpoints that already exist in the upstream TickX API.
+
+`/adapter/price-integrity/report` returns:
 
 - `epochId`
 - `windowStart`

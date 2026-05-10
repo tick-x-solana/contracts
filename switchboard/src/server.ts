@@ -30,8 +30,8 @@ createServer(async (req, res) => {
       return;
     }
 
-    if (url.pathname === "/price-integrity") {
-      const metric = url.searchParams.get("metric") as MetricName | null;
+    if (url.pathname === "/adapter/price-integrity/metric") {
+      const metric = url.searchParams.get("name") as MetricName | null;
       if (!metric || !allowedMetrics.has(metric)) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "invalid metric" }));
@@ -56,7 +56,7 @@ createServer(async (req, res) => {
       return;
     }
 
-    if (url.pathname === "/price-integrity/report") {
+    if (url.pathname === "/adapter/price-integrity/report") {
       const snapshot = await computePriceIntegritySnapshot();
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(snapshot));
@@ -99,5 +99,5 @@ createServer(async (req, res) => {
     res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
   }
 }).listen(runtimeConfig.port, () => {
-  console.log(`switchboard mock server listening on :${runtimeConfig.port}`);
+  console.log(`switchboard adapter server listening on :${runtimeConfig.port}`);
 });

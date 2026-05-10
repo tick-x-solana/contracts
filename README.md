@@ -78,9 +78,11 @@ There are two different responsibilities in this flow:
      - `internalCandlesHash`
      - `chainlinkCandlesHash`
      - `diffMerkleRoot`
+   - if we use the current Switchboard feed design, we run `switchboard/src/server.ts` as an adapter service
+   - that adapter converts raw OHLCV into the metric endpoints consumed by Switchboard jobs
 
 2. **Oracle verification + onchain commit**
-   - Switchboard jobs fetch the six scalar metrics from public HTTP endpoints
+   - Switchboard jobs fetch the six scalar metrics from the public adapter endpoints exposed by `server.ts`
    - oracle network signs the bundle
    - our cranker sends one Solana transaction:
      - Switchboard managed update bundle
@@ -88,24 +90,37 @@ There are two different responsibilities in this flow:
    - the Solana contract verifies the canonical quote account via `QuoteVerifier`
    - then stores the report PDA keyed by `epoch_id`
 
-### Switchboard task graph
+### Offchain compute pipeline
+
+Before Switchboard sees any metric, the repo computes it offchain in this order:
+
+| Stage | Action | Result |
+|---|---|---|
+| 1 | Fetch OHLCV from TickX internal source | internal candle set |
+| 2 | Fetch OHLCV from Chainlink / Binance reference source | reference candle set |
+| 3 | Compare both OHLCV datasets in `worker.ts` | MAE / P95 / Max / direction / outliers / score |
+| 4 | Publish derived metrics through adapter endpoints in `server.ts` | scalar metric endpoints for Switchboard |
+
+### Switchboard feed task graph
 
 Each production feed uses exactly this task pipeline:
 
 | Feed | Task 1 | Task 2 | Output |
 |---|---|---|---|
-| `ohlc_mae_bps` | `HttpTask(GET /price-integrity?metric=ohlc_mae_bps)` | `JsonParseTask($.value)` | numeric bps |
-| `ohlc_p95_bps` | `HttpTask(GET /price-integrity?metric=ohlc_p95_bps)` | `JsonParseTask($.value)` | numeric bps |
-| `ohlc_max_bps` | `HttpTask(GET /price-integrity?metric=ohlc_max_bps)` | `JsonParseTask($.value)` | numeric bps |
-| `direction_match_bps` | `HttpTask(GET /price-integrity?metric=direction_match_bps)` | `JsonParseTask($.value)` | numeric bps |
-| `outlier_count` | `HttpTask(GET /price-integrity?metric=outlier_count)` | `JsonParseTask($.value)` | integer |
-| `score_bps` | `HttpTask(GET /price-integrity?metric=score_bps)` | `JsonParseTask($.value)` | integer |
+| `ohlc_mae_bps` | `HttpTask(GET /adapter/price-integrity/metric?name=ohlc_mae_bps)` | `JsonParseTask($.value)` | numeric bps |
+| `ohlc_p95_bps` | `HttpTask(GET /adapter/price-integrity/metric?name=ohlc_p95_bps)` | `JsonParseTask($.value)` | numeric bps |
+| `ohlc_max_bps` | `HttpTask(GET /adapter/price-integrity/metric?name=ohlc_max_bps)` | `JsonParseTask($.value)` | numeric bps |
+| `direction_match_bps` | `HttpTask(GET /adapter/price-integrity/metric?name=direction_match_bps)` | `JsonParseTask($.value)` | numeric bps |
+| `outlier_count` | `HttpTask(GET /adapter/price-integrity/metric?name=outlier_count)` | `JsonParseTask($.value)` | integer |
+| `score_bps` | `HttpTask(GET /adapter/price-integrity/metric?name=score_bps)` | `JsonParseTask($.value)` | integer |
 
 Important:
 
 - there is **no** `ComparisonTask` inside Switchboard jobs
 - there is **no** custom oracle-side computation graph for OHLC diffing
 - all comparison logic happens in `worker.ts`
+- the upstream TickX API only exposes OHLCV, not final integrity metrics
+- `/adapter/price-integrity/...` is an adapter endpoint we host ourselves when using the current feed design
 - Switchboard only transports the finalized metric scalars into a verified quote
 
 ### Detailed data flow
@@ -114,7 +129,7 @@ Important:
 flowchart TD
   A1[TickX internal OHLCV] --> B[worker.ts\nfetch 2 OHLCV datasets\ncompute metrics + report metadata]
   A2[Chainlink / Binance OHLCV] --> B
-  B --> C[server.ts\nGET /price-integrity?metric=...\nGET /price-integrity/report]
+  B --> C[adapter server.ts\nGET /adapter/price-integrity/metric?name=...\nGET /adapter/price-integrity/report]
 
   C --> D1[Feed 1\nHttpTask -> JsonParseTask\nohlc_mae_bps]
   C --> D2[Feed 2\nHttpTask -> JsonParseTask\nohlc_p95_bps]

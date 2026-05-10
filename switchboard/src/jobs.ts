@@ -12,8 +12,8 @@ export const metricNames: MetricName[] = [
 ];
 
 export function buildMetricJob(metricsBaseUrl: string, metric: MetricName): OracleJob[] {
-  const url = new URL("/price-integrity", metricsBaseUrl);
-  url.searchParams.set("metric", metric);
+  const url = new URL("/adapter/price-integrity/metric", metricsBaseUrl);
+  url.searchParams.set("name", metric);
 
   const job = OracleJob.fromObject({
     tasks: [
