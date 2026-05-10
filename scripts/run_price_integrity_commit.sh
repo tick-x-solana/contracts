@@ -49,6 +49,16 @@ if [[ ! -f "$CONFIG_JSON" ]]; then
   exit 1
 fi
 
+ensure_switchboard_deps() {
+  if [[ ! -x "$SWITCHBOARD_DIR/node_modules/.bin/tsx" ]]; then
+    echo "==> Installing switchboard dependencies"
+    (
+      cd "$SWITCHBOARD_DIR"
+      npm install
+    )
+  fi
+}
+
 if [[ "$MODE" != "demo" && "$MODE" != "direct" ]]; then
   echo "error: MODE must be either 'demo' or 'direct'" >&2
   exit 1
@@ -69,6 +79,8 @@ extract_json_field() {
     }
   ' "$CONFIG_JSON" "$expr"
 }
+
+ensure_switchboard_deps
 
 if [[ "$REFRESH_SNAPSHOT" == "1" ]]; then
   echo "==> Refreshing synthetic snapshot"

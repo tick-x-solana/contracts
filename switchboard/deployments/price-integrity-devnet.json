@@ -23,12 +23,12 @@
     "ohlc_p95_bps": {
       "feedHash": "0x5e9237d03e40703bb836c27655806d4cf5214150ebcd3307ec9fcee9de27f910",
       "quoteAccount": "5EwYFSGK45fSDeUeF7SeVqL4B4eLpbR71UdVAV5ubXy1",
-      "mockValue": 5
+      "mockValue": 6
     },
     "ohlc_max_bps": {
       "feedHash": "0xac90206d6ad7491648c349c2efb8436fc743eb81e9bbeb242b2467f436a4a718",
       "quoteAccount": "4jP8snLiXHooBCqCppafEeDngZSkwMvV3vUnVPPjfmjr",
-      "mockValue": 6
+      "mockValue": 7
     },
     "direction_match_bps": {
       "feedHash": "0x983526c68ffaa9a120b6ab6126ed7ef1741e1daa48cf5775345771a0ab778183",
@@ -43,23 +43,23 @@
     "score_bps": {
       "feedHash": "0xb97a247b3686aeb21e0ed8c50be0dd4093b7ab1e03a9ee7858444bcdb4c19e9d",
       "quoteAccount": "BETBJHpULhztBWjNtZcotezgBSj1fk8HKcfmtjzKXCWk",
-      "mockValue": 9650
+      "mockValue": 9617
     }
   },
   "syntheticSnapshot": {
-    "epochId": 1975718,
-    "windowStart": 1778146200,
-    "windowEnd": 1778147100,
+    "epochId": 1975888,
+    "windowStart": 1778299200,
+    "windowEnd": 1778300100,
     "candleCount": 900,
-    "internalCandlesHash": "0x2a6272348c52f4e4e9e540a9f6ce4eabd098d3f7e261e001b2c800e51c58b559",
-    "chainlinkCandlesHash": "0x3d4b79f703bd3caa49de0b6531587bc1a3270980cdd5c2c7897e55e6eabfeb74",
+    "internalCandlesHash": "0x9ce9fcfa27a8c5640607ff94a5cd30d5c8567d01ffeafbc1ab40c2c65ae48537",
+    "chainlinkCandlesHash": "0x2b19578cb8f13618e9d1e482118bcd30d5dc33674351ff1a3d0433182dc4660d",
     "metrics": {
       "ohlcMaeBps": 3,
-      "ohlcP95Bps": 5,
-      "ohlcMaxBps": 6,
+      "ohlcP95Bps": 6,
+      "ohlcMaxBps": 7,
       "directionMatchBps": 10000,
       "outlierCount": 0,
-      "scoreBps": 9650
+      "scoreBps": 9617
     }
   }
 }
