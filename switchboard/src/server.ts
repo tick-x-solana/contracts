@@ -56,6 +56,13 @@ createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/price-integrity/report") {
+      const snapshot = await computePriceIntegritySnapshot();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(snapshot));
+      return;
+    }
+
     if (url.pathname === "/settlement") {
       const field = url.searchParams.get("field") as SettlementFieldName | null;
       const batchIndex = Number(url.searchParams.get("batchIndex") ?? "0");

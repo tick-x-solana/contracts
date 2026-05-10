@@ -96,7 +96,7 @@ cargo run --manifest-path client/Cargo.toml --bin initialize_from_json -- \
   --rpc-url https://api.devnet.solana.com \
   --payer ~/.config/solana/id.json \
   --program-id <PROGRAM_ID> \
-  --config-json /Users/sniperman/code/tapfun-chainlink-sc/switchboard/deployments/price-integrity-devnet.json
+  --config-json /Users/sniperman/code/tapfun-chainlink-sc/switchboard/deployments/price-integrity-prod-devnet.json
 ```
 
 Update config:
@@ -126,17 +126,6 @@ cargo run --manifest-path client/Cargo.toml --bin commit -- \
   --internal-candles-hash <0x...32bytes> \
   --chainlink-candles-hash <0x...32bytes> \
   --diff-merkle-root <0x...32bytes>
-```
-
-Manual demo trigger without Switchboard quote verification:
-
-```bash
-cargo run --manifest-path client/Cargo.toml --bin commit_demo_from_json -- \
-  --rpc-url https://api.devnet.solana.com \
-  --payer ~/.config/solana/id.json \
-  --program-id <PROGRAM_ID> \
-  --config-json /Users/sniperman/code/tapfun-chainlink-sc/switchboard/deployments/price-integrity-devnet.json \
-  --diff-merkle-root 0x1111111111111111111111111111111111111111111111111111111111111111
 ```
 
 Read a stored report PDA:

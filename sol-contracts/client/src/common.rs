@@ -124,14 +124,16 @@ pub fn deposit_accounts(
     ]
 }
 
-pub fn withdraw_accounts(
+pub fn claim_accounts(
+    claim_signer: &Pubkey,
     trader: &Pubkey,
     config: &Pubkey,
     trader_position: &Pubkey,
     vault: &Pubkey,
 ) -> Vec<AccountMeta> {
     vec![
-        AccountMeta::new(*trader, true),
+        AccountMeta::new_readonly(*claim_signer, true),
+        AccountMeta::new(*trader, false),
         AccountMeta::new(*config, false),
         AccountMeta::new(*trader_position, false),
         AccountMeta::new(*vault, false),

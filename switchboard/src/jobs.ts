@@ -32,17 +32,3 @@ export function buildMetricJob(metricsBaseUrl: string, metric: MetricName): Orac
 
   return [job];
 }
-
-export function buildStaticMetricJob(value: number): OracleJob[] {
-  const job = OracleJob.fromObject({
-    tasks: [
-      {
-        valueTask: {
-          value
-        }
-      }
-    ]
-  });
-
-  return [job];
-}

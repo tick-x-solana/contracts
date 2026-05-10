@@ -1,49 +1,40 @@
-# TickX Switchboard Price Integrity
+# TickX Switchboard Workflows
 
-This folder contains the Switchboard-side workflow for Solana `PriceIntegrity`.
+This folder contains the Switchboard-side integration for Solana `PriceIntegrity`.
 
-It also contains a mock `Settlement` batch generator for the Solana settlement program.
+`PriceIntegrity` now runs only on the real API-backed path:
 
-## Modes
+- metrics are fetched from the TickX API
+- the public HTTP server exposes those metrics to Switchboard jobs
+- feeds are deployed once on devnet
+- a cranker sends one combined Solana transaction:
+  - Switchboard managed update bundle
+  - `commit_switchboard_batch_report`
 
-There are 2 modes:
+The old fake/synthetic metrics path is removed from `price-integrity`.
 
-1. `synthetic-static` (default)
-   - no HTTP server required
-   - generates 2 synthetic 900-candle series
-   - computes final metrics from those candles
-   - stores 6 static `ValueTask` feeds on Switchboard
-2. `http-worker`
-   - fetches real OHLC data
-   - computes metrics in the worker/server
-   - serves metric endpoints over HTTP
-   - Switchboard jobs read those endpoints
-
-For now the default is `synthetic-static` via:
-
-```bash
-SWITCHBOARD_FAKE_METRICS=1
-```
-
-In this mode Switchboard does not call your API and does not need a public hostname.
+Settlement tooling is still present separately and remains experimental.
 
 ## Files
 
 - `src/worker.ts`
-  - builds one synthetic passing snapshot or computes a real one from upstream OHLC
+  - fetches real OHLC data
+  - computes the current 15-minute `PriceIntegrity` snapshot
 - `src/server.ts`
-  - optional HTTP service for `http-worker` mode
+  - exposes metric endpoints and the full computed report
 - `src/jobs.ts`
-  - builds either HTTP-backed jobs or static `ValueTask` jobs
+  - builds HTTP-backed `HttpTask -> JsonParseTask` jobs
 - `src/deploy.ts`
-  - stores the 6 job definitions with Crossbar on devnet
-  - prints `feedHash` and canonical `quoteAccount`
-  - does not send a managed update transaction
+  - stores the 6 job definitions with Crossbar
+  - writes feed configuration data needed by the consumer contract
+- `src/price_integrity_crank.ts`
+  - production cranker
+  - computes the current snapshot
+  - fetches the Switchboard managed update bundle
+  - appends the Solana consumer instruction
+  - sends one combined transaction
 - `src/simulate.ts`
-  - simulates each job against Crossbar before deployment
-- `src/snapshot.ts`
-  - refreshes only `syntheticSnapshot` inside the saved deployment JSON
-  - keeps `feedIds` and `quoteAccount` unchanged
+  - simulates the current HTTP-backed jobs against Crossbar
 
 ## Environment
 
@@ -52,19 +43,16 @@ Copy `.env.example` to `.env` and fill:
 - `RPC_URL`
 - `PAYER_KEYPAIR_PATH`
 - `CROSSBAR_URL`
-- `SWITCHBOARD_FAKE_METRICS`
-
-Only for `http-worker` mode:
-
 - `APP_API_BASE_URL`
 - `APP_API_KEY`
 - `METRICS_BASE_URL`
+- `PORT`
 
-Important:
+Notes:
 
-- By default the worker runs in synthetic mode and generates two random 900-candle series that produce passing metrics.
-- Set `SWITCHBOARD_FAKE_METRICS=0` if you want to switch back to real OHLC fetching.
-- `METRICS_BASE_URL` only matters in `http-worker` mode, and it must be publicly reachable by Switchboard oracles.
+- `METRICS_BASE_URL` must be publicly reachable by Switchboard oracles.
+- the HTTP server must stay available continuously if you expect feeds to update continuously.
+- the cranker process can run privately; only the metrics server must be public.
 
 ## Install
 
@@ -73,68 +61,10 @@ cd /Users/sniperman/code/tapfun-chainlink-sc/switchboard
 npm install
 ```
 
-## Simulate jobs
+## 1. Run the metrics server
 
 ```bash
-npm run simulate
-```
-
-In default synthetic mode, this simulates 6 static jobs whose values come from one generated passing snapshot.
-
-## Deploy the 6 feeds on Switchboard devnet
-
-```bash
-npm run deploy:devnet
-```
-
-Expected output shape:
-
-```json
-{
-  "queue": "EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7",
-  "mode": "synthetic-static",
-  "syntheticSnapshot": {
-    "candleCount": 900
-  },
-  "feeds": [
-    {
-      "metric": "ohlc_mae_bps",
-      "feedHash": "...",
-      "quoteAccount": "...",
-      "mockValue": 7
-    }
-  ]
-}
-```
-
-## Generate the next demo snapshot without redeploying feeds
-
-```bash
-npm run snapshot:devnet
-```
-
-This updates:
-
-- `syntheticSnapshot.epochId`
-- `syntheticSnapshot.windowStart`
-- `syntheticSnapshot.windowEnd`
-- `syntheticSnapshot.metrics`
-- `feeds.*.mockValue`
-
-It does not change:
-
-- `queue`
-- `feedIds`
-- `quoteAccount`
-
-## Optional HTTP mode
-
-If you want the older bridge flow:
-
-```bash
-SWITCHBOARD_FAKE_METRICS=0 npm run server
-SWITCHBOARD_FAKE_METRICS=0 npm run simulate
-SWITCHBOARD_FAKE_METRICS=0 npm run deploy:devnet
+npm run server
 ```
 
 The server exposes:
@@ -146,122 +76,97 @@ GET /price-integrity?metric=ohlc_max_bps
 GET /price-integrity?metric=direction_match_bps
 GET /price-integrity?metric=outlier_count
 GET /price-integrity?metric=score_bps
+GET /price-integrity/report
 ```
 
-## Use with the Solana contract
+`/price-integrity/report` returns:
 
-After deploy, take:
+- `epochId`
+- `windowStart`
+- `windowEnd`
+- `candleCount`
+- `internalCandlesHash`
+- `chainlinkCandlesHash`
+- `diffMerkleRoot`
+- `metrics`
 
-- the devnet queue
-- the 6 `feedHash` values in this exact order:
-  1. `ohlc_mae_bps`
-  2. `ohlc_p95_bps`
-  3. `ohlc_max_bps`
-  4. `direction_match_bps`
-  5. `outlier_count`
-  6. `score_bps`
-
-Then initialize `sol-contracts/price-integrity` with:
-
-- `--queue`
-- `--feed-ids`
-
-The quote account can be derived automatically from queue + ordered feed IDs.
-
-Current devnet deployment config is stored at:
-
-```text
-switchboard/deployments/price-integrity-devnet.json
-```
-
-## Settlement mock batches
-
-Generate the next settlement batch file for Solana `Settlement`:
+## 2. Simulate jobs
 
 ```bash
-npm run settlement:devnet
+npm run simulate
+```
+
+## 3. Deploy feeds once on devnet
+
+```bash
+npm run deploy:prod:devnet
 ```
 
 This writes:
 
 ```text
-switchboard/deployments/settlement-devnet.json
+switchboard/deployments/price-integrity-prod-devnet.json
 ```
 
 The file contains:
 
-- `windowStart`
-- `windowEnd`
-- `batches[]`
-  - `batchId`
-  - `merkleRoot`
-  - `totalPayout`
-  - `withdrawableCap`
-  - `settlementCount`
-  - `settlements[]`
-
-Use that JSON with:
-
-- `sol-contracts/settlement/client/src/bin/commit_from_json.rs`
-
-Deploy 12 settlement feeds once:
-
-```bash
-npm run settlement:deploy:devnet
-```
-
-This writes:
-
-```text
-switchboard/deployments/settlement-switchboard-devnet.json
-```
-
-That file contains:
-
 - `queue`
 - `quoteAccount`
-- `maxAgeSlots`
 - `feedIds`
 - `feedIdsCsv`
+- `maxAgeSlots`
+- `metricsBaseUrl`
 
-Prepare one batch commit payload without redeploying feeds:
+## 4. Initialize or update the Solana contract
+
+Use the client in `sol-contracts/price-integrity` with:
+
+- `initialize_from_json`
+- or `set_switchboard_config_from_json`
+
+against:
+
+```text
+switchboard/deployments/price-integrity-prod-devnet.json
+```
+
+## 5. Run the production cranker
 
 ```bash
-npm run settlement:prepare:commit:devnet
+npm run crank:devnet -- \
+  --program-id <PRICE_INTEGRITY_PROGRAM_ID> \
+  --rpc-url https://api.devnet.solana.com \
+  --payer ~/.config/solana/id.json \
+  --config-json /Users/sniperman/code/tapfun-chainlink-sc/switchboard/deployments/price-integrity-prod-devnet.json
 ```
 
-This writes:
+This sends one Solana transaction containing:
+
+1. Switchboard managed update bundle
+2. `commit_switchboard_batch_report`
+
+That is the correct production ordering.
+
+## 6. Schedule every 15 minutes
+
+Example cron:
+
+```cron
+*/15 * * * * cd /Users/sniperman/code/tapfun-chainlink-sc/switchboard && npm run crank:devnet -- --program-id <PRICE_INTEGRITY_PROGRAM_ID> --rpc-url https://api.devnet.solana.com --payer ~/.config/solana/id.json --config-json /Users/sniperman/code/tapfun-chainlink-sc/switchboard/deployments/price-integrity-prod-devnet.json >> /tmp/price-integrity-crank.log 2>&1
+```
+
+Important:
+
+- Switchboard oracle nodes resolve the jobs and produce verified updates.
+- your cranker still sends the combined Solana transaction.
+- the Switchboard network does not host this repo or run your cron for you.
+
+## Current production deployment file
 
 ```text
-switchboard/deployments/settlement-switchboard-commit-devnet.json
+switchboard/deployments/price-integrity-prod-devnet.json
 ```
 
-That file contains:
+## Settlement
 
-- stable feed config
-- `batchIndex`
-- `windowStart`
-- `windowEnd`
-- `selectedBatch`
-
-For a stable TEE-compatible deployment:
-
-1. run `npm run server` on a public host
-2. set `SWITCHBOARD_FAKE_METRICS=0`
-3. point `METRICS_BASE_URL` at that host
-4. run `npm run settlement:deploy:devnet` once
-5. initialize `sol-contracts/settlement` from `settlement-switchboard-devnet.json`
-6. refresh the same feed IDs for each new batch window
-7. run `npm run settlement:prepare:commit:devnet`
-8. commit using `settlement-switchboard-commit-devnet.json`
-
-## Default Switchboard devnet queue
-
-From Switchboard docs:
-
-```text
-EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7
-```
-
-Source:
-- https://docs.switchboard.xyz/docs-by-chain/solana-svm
+Settlement tooling is still present in this folder, but the verified feed-based architecture hit payload-size and feed-shape limits. It should be treated as experimental, not production-ready.

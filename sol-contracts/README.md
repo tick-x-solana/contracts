@@ -6,7 +6,6 @@ Current scope:
 
 - native SOL only
 - trader deposits into a program vault PDA
-- trader demo withdrawals without admin signature
 - admin-authorized trader claims
 - owner-managed claim signer
 
@@ -24,12 +23,10 @@ PDAs used by the program:
 
 - `Initialize { claim_signer }`
 - `DepositTrader { amount }`
-- `WithdrawTrader { amount }`
 - `ClaimTrader { amount }`
 - `SetClaimSigner { new_claim_signer }`
 
 `ClaimTrader` requires the configured `claim_signer` to sign the transaction.
-`WithdrawTrader` is a demo-only direct trader withdrawal path.
 
 ## Build
 
@@ -64,14 +61,16 @@ cargo run --manifest-path client/Cargo.toml --bin deposit -- \
   --amount-sol 0.1
 ```
 
-Withdraw native SOL directly for demo:
+Claim native SOL with the configured admin signer:
 
 ```bash
 cd sol-contracts
-cargo run --manifest-path client/Cargo.toml --bin withdraw -- \
+cargo run --manifest-path client/Cargo.toml --bin claim -- \
   --rpc-url https://api.devnet.solana.com \
   --payer ~/.config/solana/id.json \
   --program-id <PROGRAM_ID> \
+  --claim-signer ~/.config/solana/claim-signer.json \
+  --trader <TRADER_PUBKEY> \
   --amount-sol 0.1
 ```
 
@@ -86,4 +85,4 @@ solana program deploy target/deploy/tickx_pool_reserve_sol.so
 
 - The vault holds native lamports directly.
 - Trader balances are accounted for in PDA state, not inferred from raw vault balance.
-- Withdrawals keep the vault rent exempt.
+- Claims keep the vault rent exempt.

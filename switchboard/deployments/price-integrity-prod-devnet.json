@@ -1,0 +1,52 @@
+{
+  "network": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "queue": "EYiAmGSdsQTuCw413V5BzaruWuCCSDgTPtBGvLkXHbe7",
+  "switchboardQuoteProgramId": "orac1eFjzWL5R3RbbdMV68K9H6TaCVVcL6LjvQQWAbz",
+  "mode": "http-worker",
+  "maxAgeSlots": 30,
+  "metricsBaseUrl": "https://your-public-hostname.example.com",
+  "quoteAccount": "HvYPSrVULJNaTR88QZX4KrVWoyWyUhVR3QxmhvvGLtE9",
+  "feedIds": [
+    "0x64567c678ec76087fcd7f08885b6ad30194e095332c935f652861ca943530f17",
+    "0x61a693fb737ea8d22e7c2099713c3e0f78377bb8ad1d1a8037e531633f476ef7",
+    "0xd746c3d65f90d72518430fb7215dd75e37eb2b21b11eec89da44fc412ea6257d",
+    "0x7e8ebf352cf3d0609b86c0a09cf57a008e8580fd1cb4145088aa99c6d136d673",
+    "0x365edab4617773413b62a2b8d60f9a4fbeaa7a5e716a0599c19e0331e7164b83",
+    "0x20c061424095ff1298c4370ce682314c2d35bf597b38d6f2345c704dbecaf833"
+  ],
+  "feedIdsCsv": "0x64567c678ec76087fcd7f08885b6ad30194e095332c935f652861ca943530f17,0x61a693fb737ea8d22e7c2099713c3e0f78377bb8ad1d1a8037e531633f476ef7,0xd746c3d65f90d72518430fb7215dd75e37eb2b21b11eec89da44fc412ea6257d,0x7e8ebf352cf3d0609b86c0a09cf57a008e8580fd1cb4145088aa99c6d136d673,0x365edab4617773413b62a2b8d60f9a4fbeaa7a5e716a0599c19e0331e7164b83,0x20c061424095ff1298c4370ce682314c2d35bf597b38d6f2345c704dbecaf833",
+  "feeds": {
+    "ohlc_mae_bps": {
+      "feedHash": "0x64567c678ec76087fcd7f08885b6ad30194e095332c935f652861ca943530f17",
+      "quoteAccount": "C8JbfiGdE9v36ZMwYtC3S6wDampQBvDV1fGfSZ5ZQkJE",
+      "mockValue": 0
+    },
+    "ohlc_p95_bps": {
+      "feedHash": "0x61a693fb737ea8d22e7c2099713c3e0f78377bb8ad1d1a8037e531633f476ef7",
+      "quoteAccount": "8KfioAC9WX7YiNLXDZ96tX6Z6jFuwoPafAEbrovYzrBD",
+      "mockValue": 0
+    },
+    "ohlc_max_bps": {
+      "feedHash": "0xd746c3d65f90d72518430fb7215dd75e37eb2b21b11eec89da44fc412ea6257d",
+      "quoteAccount": "BtAg98ytvXQxXTcjjJauJ5ckZDNgajDsv5riCjCNYiKG",
+      "mockValue": 0
+    },
+    "direction_match_bps": {
+      "feedHash": "0x7e8ebf352cf3d0609b86c0a09cf57a008e8580fd1cb4145088aa99c6d136d673",
+      "quoteAccount": "B9JQqZgCXpcPUmDEip4iecyf3uYDaqCmTkpPTdXbPvkn",
+      "mockValue": 0
+    },
+    "outlier_count": {
+      "feedHash": "0x365edab4617773413b62a2b8d60f9a4fbeaa7a5e716a0599c19e0331e7164b83",
+      "quoteAccount": "HQbZWmQP6GxgP2mCFojMM1JwbZSDfat4voZ5kgPm9GWk",
+      "mockValue": 0
+    },
+    "score_bps": {
+      "feedHash": "0x20c061424095ff1298c4370ce682314c2d35bf597b38d6f2345c704dbecaf833",
+      "quoteAccount": "J6UoSZyZcWwtPYmDdft5CUuyzCc1k4NYp6Q92hB2RKbA",
+      "mockValue": 0
+    }
+  },
+  "syntheticSnapshot": null
+}

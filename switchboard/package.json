@@ -6,8 +6,9 @@
   "scripts": {
     "server": "tsx src/server.ts",
     "deploy:devnet": "tsx src/deploy.ts",
+    "deploy:prod:devnet": "tsx src/deploy.ts",
+    "crank:devnet": "tsx src/price_integrity_crank.ts",
     "simulate": "tsx src/simulate.ts",
-    "snapshot:devnet": "tsx src/snapshot.ts",
     "settlement:devnet": "tsx src/settlement.ts",
     "settlement:deploy:devnet": "tsx src/settlement_deploy.ts",
     "settlement:prepare:commit:devnet": "tsx src/settlement_prepare_commit.ts",
@@ -18,5 +19,8 @@
     "@switchboard-xyz/on-demand": "2.14.5",
     "dotenv": "^16.6.1",
     "tsx": "^4.20.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2"
   }
 }

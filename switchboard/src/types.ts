@@ -23,6 +23,17 @@ export interface ComputedMetrics {
   scoreBps: number;
 }
 
+export interface PriceIntegritySnapshot {
+  epochId: number;
+  windowStart: number;
+  windowEnd: number;
+  candleCount: number;
+  internalCandlesHash: `0x${string}`;
+  chainlinkCandlesHash: `0x${string}`;
+  diffMerkleRoot: `0x${string}`;
+  metrics: ComputedMetrics;
+}
+
 export type MetricName =
   | "ohlc_mae_bps"
   | "ohlc_p95_bps"
@@ -37,6 +48,4 @@ export interface WorkerConfig {
   outlierThresholdBps: number;
   minScoreBps: number;
   maxOhlcP95Bps: number;
-  simulationWindowStart?: number;
-  simulationWindowEnd?: number;
 }

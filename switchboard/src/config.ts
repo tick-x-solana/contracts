@@ -7,13 +7,7 @@ export const workerConfig: WorkerConfig = {
   appApiKey: process.env.APP_API_KEY ?? "",
   outlierThresholdBps: 50,
   minScoreBps: 9000,
-  maxOhlcP95Bps: 50,
-  simulationWindowStart: process.env.SIMULATION_WINDOW_START
-    ? Number(process.env.SIMULATION_WINDOW_START)
-    : undefined,
-  simulationWindowEnd: process.env.SIMULATION_WINDOW_END
-    ? Number(process.env.SIMULATION_WINDOW_END)
-    : undefined
+  maxOhlcP95Bps: 50
 };
 
 export const runtimeConfig = {
